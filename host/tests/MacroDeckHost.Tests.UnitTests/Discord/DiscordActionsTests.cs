@@ -14,7 +14,7 @@ internal sealed class DiscordActionsTests
 		DiscordActions.Create(() => null, new StubWebhookClient());
 
 	private static readonly string[] _switchableSettings =
-		["mute", "deafen", "noise-suppression", "echo-cancellation", "automatic-gain-control"];
+		["mute", "deafen", "noise-suppression", "echo-cancellation", "automatic-gain-control", "mute-user"];
 
 	[Test]
 	public void Every_action_id_is_unique()
@@ -314,6 +314,247 @@ internal sealed class DiscordActionsTests
 	}
 
 	[Test]
+	public async Task The_user_volume_action_sends_the_user_id_and_volume()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["mode"] = "set",
+				["volume"] = 90d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Succeeded));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
+			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u2").Volume, Is.EqualTo(90));
+		});
+	}
+
+	[Test]
+	public async Task The_user_volume_action_raises_from_the_tracked_volume()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["mode"] = "increase",
+				["volume"] = 10d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Succeeded));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
+		});
+	}
+
+	[Test]
+	public async Task The_user_volume_action_clamps_to_what_discord_accepts()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["mode"] = "set",
+				["volume"] = 250d
+			}));
+
+		Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+			Is.EqualTo("""{"user_id":"u2","volume":200}"""));
+	}
+
+	[Test]
+	public async Task The_user_volume_action_needs_a_user()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["mode"] = "set",
+				["volume"] = 90d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Failed));
+			Assert.That(result.ErrorCode, Is.EqualTo(ActionErrorCodes.InvalidParameter));
+			Assert.That(TestLocalization.Resolve(result.ErrorMessage), Does.Contain("No user was selected"));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS"), Is.Empty);
+		});
+	}
+
+	[Test]
+	public async Task The_user_volume_action_needs_a_known_member_to_adjust()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "ghost",
+				["mode"] = "increase",
+				["volume"] = 10d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Failed));
+			Assert.That(result.ErrorCode, Is.EqualTo(ActionErrorCodes.InvalidParameter));
+			Assert.That(TestLocalization.Resolve(result.ErrorMessage), Does.Contain("not in the current voice channel"));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS"), Is.Empty);
+		});
+	}
+
+	[Test]
+	public async Task A_rejected_user_volume_command_fails_the_action()
+	{
+		var client = BuildClientWithMembers()
+			.Fails("SET_USER_VOICE_SETTINGS", new DiscordRpcException(4000, "Invalid payload"));
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["mode"] = "set",
+				["volume"] = 90d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Failed));
+			Assert.That(result.ErrorCode, Is.EqualTo(ActionErrorCodes.ProviderRejected));
+			Assert.That(TestLocalization.Resolve(result.ErrorMessage), Does.Contain("rejected").And.Contain("4000"));
+		});
+	}
+
+	[Test]
+	public async Task The_user_volume_action_fails_when_discord_is_not_running()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = new DiscordConnection(() => client,
+			new FakeDiscordOAuthClient(),
+			"123456",
+			"secret",
+			new DiscordTokens("stored-access", "stored-refresh", ExpiresAt: null, "rpc rpc.voice.read rpc.voice.write"),
+			(_, _) => Task.CompletedTask,
+			events: null,
+			TimeSpan.FromMinutes(5));
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["mode"] = "set",
+				["volume"] = 90d
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Failed));
+			Assert.That(result.ErrorCode, Is.EqualTo(ActionErrorCodes.NotConnected));
+			Assert.That(TestLocalization.Resolve(result.ErrorMessage), Does.Contain("not running"));
+		});
+	}
+
+	[Test]
+	public async Task Toggling_mute_for_a_muted_member_unmutes_them()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "mute-user");
+
+		var result = await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u3"
+			}));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Succeeded));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u3","mute":false}"""));
+			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u3").Muted, Is.False);
+		});
+	}
+
+	[Test]
+	public async Task The_mute_user_action_sends_only_the_mute_field()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = DiscordActions.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "mute-user");
+
+		await action.CreateExecutor()
+			.ExecuteAsync(Context(new Dictionary<string, object>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2",
+				["action"] = "on"
+			}));
+
+		Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+			Is.EqualTo("""{"user_id":"u2","mute":true}"""));
+	}
+
+	[Test]
+	public async Task The_user_picker_lists_channel_members_and_allows_custom_ids()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		var action = (IDynamicOptionsActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var result = await action.GetDynamicOptionsAsync(new DynamicOptionsContext
+			{
+				ParameterName = "userId",
+				CurrentParameters = new Dictionary<string, object?>(StringComparer.Ordinal)
+			},
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Options.Select(o => o.Value), Is.EquivalentTo(["me", "u2", "u3"]));
+			Assert.That(TestLocalization.Resolve(result.Options.Single(o => o.Value == "u2").Label),
+				Is.EqualTo("Friend"));
+			Assert.That(result.AllowsCustomValue, Is.True, "a pasted user id must stay enterable");
+		});
+	}
+
+	[Test]
 	public async Task A_configured_but_closed_discord_fails_the_action()
 	{
 		var client = BuildClient();
@@ -411,6 +652,25 @@ internal sealed class DiscordActionsTests
 		{
 			client.RespondsWithEcho("SET_VOICE_SETTINGS");
 		}
+
+		return client;
+	}
+
+	private static FakeDiscordRpcClient BuildClientWithMembers()
+	{
+		var client = new FakeDiscordRpcClient()
+			.Responds("AUTHENTICATE",
+				"""{"user":{"id":"me","username":"tester"},"scopes":["rpc","rpc.voice.read","rpc.voice.write"]}""")
+			.Responds("GET_VOICE_SETTINGS", """{"mute":false,"deaf":false}""")
+			.Responds("GET_SELECTED_VOICE_CHANNEL",
+				"""
+				{"id":"555","name":"General","guild_id":"999","voice_states":[
+					{"user":{"id":"me","username":"tester"},"nick":"tester","volume":100,"mute":false},
+					{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false},
+					{"user":{"id":"u3","username":"lurker"},"volume":110,"mute":true}]}
+				""")
+			.Responds("GET_GUILDS", """{"guilds":[{"id":"999","name":"My Server"}]}""")
+			.RespondsWithEcho("SET_USER_VOICE_SETTINGS");
 
 		return client;
 	}

@@ -165,6 +165,48 @@ internal sealed class DiscordConnection : IDisposable
 		return string.Create(CultureInfo.InvariantCulture, $"{ex.Message} (code {ex.Code})");
 	}
 
+	public async Task<DiscordUserVoiceSettingsResult> SetUserVoiceSettingsAsync(
+		DiscordUserVoiceSettingsPatch patch,
+		CancellationToken cancellationToken = default)
+	{
+		var client = _client;
+		if (client is null || !client.IsConnected)
+		{
+			_logger.Warning("Discord command {Command} ignored: not connected", DiscordRpcCommands.SetUserVoiceSettings);
+			return DiscordUserVoiceSettingsResult.NotConnected();
+		}
+
+		JsonElement response;
+		try
+		{
+			response = await client
+				.SendCommandAsync(DiscordRpcCommands.SetUserVoiceSettings, patch, cancellationToken: cancellationToken)
+				.ConfigureAwait(false);
+		}
+		catch (DiscordRpcException ex) when (ex.IsAuthProblem || ex.IsScopeProblem)
+		{
+			NeedsReauthorization = true;
+			_logger.Warning(ex, "Discord rejected the user voice settings command: authorization is no longer valid");
+			return DiscordUserVoiceSettingsResult.Rejected(FormatRejection(ex));
+		}
+		catch (DiscordRpcException ex)
+		{
+			_logger.Warning(ex, "Discord command {Command} failed", DiscordRpcCommands.SetUserVoiceSettings);
+
+			return ex.Code == 0
+				? DiscordUserVoiceSettingsResult.Failed(ex.Message)
+				: DiscordUserVoiceSettingsResult.Rejected(FormatRejection(ex));
+		}
+		catch (Exception ex) when (ex is TimeoutException or IOException)
+		{
+			_logger.Warning(ex, "Discord command {Command} failed", DiscordRpcCommands.SetUserVoiceSettings);
+			return DiscordUserVoiceSettingsResult.Failed(ex.Message);
+		}
+
+		UpdateState(state => DiscordStateMapper.ApplyUserVoiceSettings(state, response));
+		return DiscordUserVoiceSettingsResult.Applied();
+	}
+
 	private void RecordVoiceSettingsOutcome(
 		DiscordVoiceSettingsPatch patch,
 		IReadOnlyList<DiscordUnappliedField> unapplied)
@@ -690,6 +732,10 @@ internal sealed class DiscordConnection : IDisposable
 			case DiscordRpcEvents.VoiceStateCreate:
 			case DiscordRpcEvents.VoiceStateUpdate:
 				UpdateState(state => DiscordStateMapper.ApplyVoiceState(state, e.Data));
+				break;
+
+			case DiscordRpcEvents.VoiceStateDelete:
+				UpdateState(state => DiscordStateMapper.ApplyVoiceStateDelete(state, e.Data));
 				break;
 
 			case DiscordRpcEvents.VoiceConnectionStatus:

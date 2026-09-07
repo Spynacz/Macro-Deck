@@ -5341,6 +5341,12 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   <data name="Integrations.Discord.Actions.Mute.OnLabel" xml:space="preserve">
     <value>Wycisz</value>
   </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Description" xml:space="preserve">
+    <value>Wycisza, wyłącza wyciszenie lub przełącza dźwięk jednego uczestnika kanału głosowego (tylko lokalnie)</value>
+  </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Name" xml:space="preserve">
+    <value>Wycisz użytkownika</value>
+  </data>
   <data name="Integrations.Discord.Actions.NoiseSuppression.Description" xml:space="preserve">
     <value>Włącza lub wyłącza standardową redukcję szumów Discorda. To nie jest Krisp: interfejs RPC Discorda udostępnia tylko przełącznik standardowej redukcji szumów, więc ta akcja nie może sterować redukcją szumów Krisp.</value>
   </data>
@@ -5428,6 +5434,12 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   <data name="Integrations.Discord.Actions.SetRichPresence.WatchingOption" xml:space="preserve">
     <value>Ogląda</value>
   </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Description" xml:space="preserve">
+    <value>Ustawia, zwiększa lub zmniejsza głośność jednego uczestnika kanału głosowego</value>
+  </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Name" xml:space="preserve">
+    <value>Ustaw głośność użytkownika</value>
+  </data>
   <data name="Integrations.Discord.Actions.SetVoiceMode.Description" xml:space="preserve">
     <value>Przełącza między trybem naciśnij, aby mówić a trybem aktywacji głosem</value>
   </data>
@@ -5487,6 +5499,12 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   </data>
   <data name="Integrations.Discord.Actions.VoiceToggle.TurnOnOption" xml:space="preserve">
     <value>Włącz</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserDescription" xml:space="preserve">
+    <value>Uczestnik bieżącego kanału głosowego. Można też wkleić identyfikator użytkownika.</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserLabel" xml:space="preserve">
+    <value>Użytkownik</value>
   </data>
   <data name="Integrations.Discord.Config.AuthorizationDeclined" xml:space="preserve">
     <value>Discord odrzucił autoryzację: {details}</value>
@@ -5575,11 +5593,17 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   <data name="Integrations.Discord.Errors.NoRichPresenceDetails" xml:space="preserve">
     <value>Nie skonfigurowano szczegółów Rich Presence.</value>
   </data>
+  <data name="Integrations.Discord.Errors.NoUserSelected" xml:space="preserve">
+    <value>Nie wybrano użytkownika.</value>
+  </data>
   <data name="Integrations.Discord.Errors.NoWebhookUrl" xml:space="preserve">
     <value>Nie skonfigurowano adresu URL webhooka.</value>
   </data>
   <data name="Integrations.Discord.Errors.NotSetUp" xml:space="preserve">
     <value>Discord nie jest skonfigurowany.</value>
+  </data>
+  <data name="Integrations.Discord.Errors.UnknownUser" xml:space="preserve">
+    <value>Wybrany użytkownik nie znajduje się w bieżącym kanale głosowym.</value>
   </data>
   <data name="Integrations.Discord.Errors.VoiceActionFailed" xml:space="preserve">
     <value>Akcja głosowa Discorda nie powiodła się: {details}</value>

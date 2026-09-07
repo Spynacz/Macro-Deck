@@ -10,6 +10,7 @@ internal static class DiscordRpcCommands
 	public const string GetChannels = "GET_CHANNELS";
 	public const string GetVoiceSettings = "GET_VOICE_SETTINGS";
 	public const string SetVoiceSettings = "SET_VOICE_SETTINGS";
+	public const string SetUserVoiceSettings = "SET_USER_VOICE_SETTINGS";
 	public const string SelectVoiceChannel = "SELECT_VOICE_CHANNEL";
 	public const string GetSelectedVoiceChannel = "GET_SELECTED_VOICE_CHANNEL";
 	public const string SelectTextChannel = "SELECT_TEXT_CHANNEL";

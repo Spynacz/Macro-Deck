@@ -5341,6 +5341,12 @@ Descárgalo desde el sitio web de Macro Deck y actualiza el AppImage, DEB o RPM 
   <data name="Integrations.Discord.Actions.Mute.OnLabel" xml:space="preserve">
     <value>Silenciar</value>
   </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Description" xml:space="preserve">
+    <value>Silencia, reactiva o alterna el audio de un miembro del canal de voz solo para ti</value>
+  </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Name" xml:space="preserve">
+    <value>Silenciar usuario</value>
+  </data>
   <data name="Integrations.Discord.Actions.NoiseSuppression.Description" xml:space="preserve">
     <value>Activa o desactiva la supresión de ruido estándar de Discord. Esto no es Krisp: la interfaz RPC de Discord solo expone el interruptor de supresión estándar, así que esta acción no puede controlar la cancelación de ruido Krisp.</value>
   </data>
@@ -5428,6 +5434,12 @@ Descárgalo desde el sitio web de Macro Deck y actualiza el AppImage, DEB o RPM 
   <data name="Integrations.Discord.Actions.SetRichPresence.WatchingOption" xml:space="preserve">
     <value>Viendo</value>
   </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Description" xml:space="preserve">
+    <value>Establece, sube o baja el volumen de un miembro del canal de voz</value>
+  </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Name" xml:space="preserve">
+    <value>Establecer volumen de usuario</value>
+  </data>
   <data name="Integrations.Discord.Actions.SetVoiceMode.Description" xml:space="preserve">
     <value>Cambia entre pulsar para hablar y activación por voz</value>
   </data>
@@ -5487,6 +5499,12 @@ Descárgalo desde el sitio web de Macro Deck y actualiza el AppImage, DEB o RPM 
   </data>
   <data name="Integrations.Discord.Actions.VoiceToggle.TurnOnOption" xml:space="preserve">
     <value>Activar</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserDescription" xml:space="preserve">
+    <value>Un miembro del canal de voz actual. También puedes pegar un ID de usuario.</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserLabel" xml:space="preserve">
+    <value>Usuario</value>
   </data>
   <data name="Integrations.Discord.Config.AuthorizationDeclined" xml:space="preserve">
     <value>Discord rechazó la autorización: {details}</value>
@@ -5575,11 +5593,17 @@ Descárgalo desde el sitio web de Macro Deck y actualiza el AppImage, DEB o RPM 
   <data name="Integrations.Discord.Errors.NoRichPresenceDetails" xml:space="preserve">
     <value>No se configuraron detalles de Rich Presence.</value>
   </data>
+  <data name="Integrations.Discord.Errors.NoUserSelected" xml:space="preserve">
+    <value>No se seleccionó ningún usuario.</value>
+  </data>
   <data name="Integrations.Discord.Errors.NoWebhookUrl" xml:space="preserve">
     <value>No se configuró ninguna URL de webhook.</value>
   </data>
   <data name="Integrations.Discord.Errors.NotSetUp" xml:space="preserve">
     <value>Discord no está configurado.</value>
+  </data>
+  <data name="Integrations.Discord.Errors.UnknownUser" xml:space="preserve">
+    <value>El usuario seleccionado no está en el canal de voz actual.</value>
   </data>
   <data name="Integrations.Discord.Errors.VoiceActionFailed" xml:space="preserve">
     <value>La acción de voz de Discord falló: {details}</value>

@@ -216,6 +216,156 @@ internal sealed class DiscordStateMapperTests
 	}
 
 	[Test]
+	public void A_selected_channel_lists_its_members()
+	{
+		var state = DiscordStateMapper.ApplySelectedVoiceChannel(_connected,
+			Json("""
+				 {
+				 	"id": "555",
+				 	"name": "General",
+				 	"guild_id": "999",
+				 	"voice_states": [
+				 		{ "user": { "id": "me", "username": "tester" }, "nick": "Tester", "volume": 100, "mute": false },
+				 		{ "user": { "id": "u2", "username": "friend" }, "nick": "Friend", "volume": 80, "mute": false },
+				 		{ "user": { "id": "u3", "username": "lurker" }, "volume": 110, "mute": true }
+				 	]
+				 }
+				 """),
+			guildName: "My Server");
+
+		Assert.That(state.VoiceUsers.Select(u => u.UserId), Is.EqualTo(["me", "u2", "u3"]));
+		Assert.Multiple(() =>
+		{
+			var me = state.VoiceUsers.Single(u => u.UserId == "me");
+			Assert.That(me.Name, Is.EqualTo("Tester"), "the nick wins over the username");
+
+			var friend = state.VoiceUsers.Single(u => u.UserId == "u2");
+			Assert.That(friend.Name, Is.EqualTo("Friend"));
+			Assert.That(friend.Volume, Is.EqualTo(80));
+			Assert.That(friend.Muted, Is.False);
+
+			var lurker = state.VoiceUsers.Single(u => u.UserId == "u3");
+			Assert.That(lurker.Name, Is.EqualTo("lurker"), "the username stands in for a missing nick");
+			Assert.That(lurker.Volume, Is.EqualTo(110));
+			Assert.That(lurker.Muted, Is.True);
+		});
+	}
+
+	[Test]
+	public void A_channel_without_voice_states_lists_no_members()
+	{
+		var seeded = _connected with
+		{
+			VoiceUsers = [new DiscordVoiceUser { UserId = "u2", Volume = 80 }]
+		};
+
+		var state = DiscordStateMapper.ApplySelectedVoiceChannel(seeded,
+			Json("""{"id":"new","name":"Other","guild_id":"999"}"""));
+
+		Assert.That(state.VoiceUsers, Is.Empty, "members of the previous channel must not linger");
+	}
+
+	[Test]
+	public void A_member_update_changes_only_that_member()
+	{
+		var seeded = _connected with
+		{
+			VoiceUsers =
+			[
+				new DiscordVoiceUser { UserId = "u2", Name = "Friend", Volume = 80 },
+				new DiscordVoiceUser { UserId = "u3", Name = "Lurker", Volume = 110, Muted = true }
+			]
+		};
+
+		var state = DiscordStateMapper.ApplyVoiceState(seeded,
+			Json("""{"user":{"id":"u2","username":"friend"},"volume":90,"mute":true}"""));
+
+		Assert.Multiple(() =>
+		{
+			var friend = state.VoiceUsers.Single(u => u.UserId == "u2");
+			Assert.That(friend.Volume, Is.EqualTo(90));
+			Assert.That(friend.Muted, Is.True);
+			Assert.That(friend.Name, Is.EqualTo("friend"), "a fresh display name wins over the stored one");
+
+			var lurker = state.VoiceUsers.Single(u => u.UserId == "u3");
+			Assert.That(lurker.Volume, Is.EqualTo(110));
+			Assert.That(lurker.Muted, Is.True);
+		});
+
+		var nameless = DiscordStateMapper.ApplyVoiceState(seeded, Json("""{"volume":50}"""));
+
+		Assert.That(nameless, Is.EqualTo(seeded), "an entry without a user changes nothing");
+	}
+
+	[Test]
+	public void A_first_sighting_of_a_member_adds_them()
+	{
+		var state = DiscordStateMapper.ApplyVoiceState(_connected,
+			Json("""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}"""));
+
+		var friend = state.VoiceUsers.SingleOrDefault(u => u.UserId == "u2");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(friend, Is.Not.Null);
+			Assert.That(friend!.Name, Is.EqualTo("Friend"));
+			Assert.That(friend.Volume, Is.EqualTo(80));
+		});
+	}
+
+	[Test]
+	public void A_member_delete_removes_the_member()
+	{
+		var seeded = _connected with
+		{
+			VoiceUsers =
+			[
+				new DiscordVoiceUser { UserId = "u2", Name = "Friend", Volume = 80 },
+				new DiscordVoiceUser { UserId = "u3", Name = "Lurker", Volume = 110 }
+			]
+		};
+
+		var state = DiscordStateMapper.ApplyVoiceStateDelete(seeded,
+			Json("""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}"""));
+
+		Assert.That(state.VoiceUsers.Select(u => u.UserId), Is.EqualTo(["u3"]));
+	}
+
+	[Test]
+	public void A_user_voice_settings_response_updates_the_member()
+	{
+		var seeded = _connected with
+		{
+			VoiceUsers = [new DiscordVoiceUser { UserId = "u2", Name = "Friend", Volume = 80 }]
+		};
+
+		var state = DiscordStateMapper.ApplyUserVoiceSettings(seeded,
+			Json("""{"user_id":"u2","volume":90,"mute":true}"""));
+
+		var friend = state.VoiceUsers.Single(u => u.UserId == "u2");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(friend.Volume, Is.EqualTo(90));
+			Assert.That(friend.Muted, Is.True);
+			Assert.That(friend.Name, Is.EqualTo("Friend"));
+		});
+	}
+
+	[Test]
+	public void Leaving_a_channel_forgets_the_members()
+	{
+		var seeded = _connected with
+		{
+			VoiceUsers = [new DiscordVoiceUser { UserId = "u2", Volume = 80 }]
+		};
+
+		var state = seeded.WithoutVoiceChannel();
+
+		Assert.That(state.VoiceUsers, Is.Empty);
+	}
+
+	[Test]
 	public void The_user_is_read_from_a_ready_or_authenticate_payload()
 	{
 		var (id, name) = DiscordStateMapper.ReadUser(
@@ -251,6 +401,8 @@ internal sealed class DiscordStateMapperTests
 		{
 			Assert.That(DiscordStateMapper.ApplyVoiceSettings(_connected, Json("[]")), Is.EqualTo(_connected));
 			Assert.That(DiscordStateMapper.ApplyVoiceState(_connected, Json("42")), Is.EqualTo(_connected));
+			Assert.That(DiscordStateMapper.ApplyVoiceStateDelete(_connected, Json("42")), Is.EqualTo(_connected));
+			Assert.That(DiscordStateMapper.ApplyUserVoiceSettings(_connected, Json("42")), Is.EqualTo(_connected));
 			Assert.That(DiscordStateMapper.ReadScopes(Json("\"nope\"")), Is.Empty);
 			Assert.That(DiscordStateMapper.ReadUser(Json("null")).Id, Is.Null);
 		});

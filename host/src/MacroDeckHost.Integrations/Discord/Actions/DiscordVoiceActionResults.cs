@@ -56,6 +56,21 @@ internal static class DiscordVoiceActionResults
 		}
 	}
 
+	public static ActionResult ToUserVoiceActionResult(DiscordUserVoiceSettingsResult result, string action)
+		=> result.Outcome switch
+		{
+			DiscordUserVoiceSettingsOutcome.Applied => ActionResult.Success(),
+			DiscordUserVoiceSettingsOutcome.NotConnected => ActionResult.Failed(ActionErrorCodes.NotConnected,
+				AppStrings.Integrations.Discord.Errors.VoiceActionFailed(
+					details: $"Discord is not running, so \"{action}\" did nothing.")),
+			DiscordUserVoiceSettingsOutcome.Rejected => ActionResult.Failed(ActionErrorCodes.ProviderRejected,
+				AppStrings.Integrations.Discord.Errors.VoiceActionFailed(
+					details: $"Discord rejected \"{action}\": {result.Message}")),
+			_ => ActionResult.Failed(ActionErrorCodes.ProviderError,
+				AppStrings.Integrations.Discord.Errors.VoiceActionFailed(
+					details: $"Discord could not apply \"{action}\": {result.Message}"))
+		};
+
 	private static string FormatNotApplied(IReadOnlyList<DiscordUnappliedField> fields, string action)
 	{
 		var omitted = fields.Where(f => f.Reason == DiscordFieldMismatch.Omitted).Select(f => f.Field).ToList();

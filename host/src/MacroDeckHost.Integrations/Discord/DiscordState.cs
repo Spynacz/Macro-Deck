@@ -1,5 +1,16 @@
 namespace MacroDeckHost.Integrations.Discord;
 
+internal sealed record DiscordVoiceUser
+{
+	public required string UserId { get; init; }
+
+	public string? Name { get; init; }
+
+	public double Volume { get; init; } = 100;
+
+	public bool Muted { get; init; }
+}
+
 internal sealed record DiscordState
 {
 	public static DiscordState Disconnected { get; } = new();
@@ -52,6 +63,7 @@ internal sealed record DiscordState
 
 	public bool SelfSpeaking { get; init; }
 
+	public IReadOnlyList<DiscordVoiceUser> VoiceUsers { get; init; } = [];
 	public DiscordState WithoutVoiceChannel()
 	{
 		return this with
@@ -65,6 +77,7 @@ internal sealed record DiscordState
 			SelfSpeaking = false,
 			VoiceConnectionState = null,
 			AveragePing = null
+				VoiceUsers = []
 		};
 	}
 }

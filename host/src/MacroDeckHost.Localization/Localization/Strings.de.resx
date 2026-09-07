@@ -5340,6 +5340,12 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   <data name="Integrations.Discord.Actions.Mute.OnLabel" xml:space="preserve">
     <value>Stummschalten</value>
   </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Description" xml:space="preserve">
+    <value>Schaltet ein Sprachkanalmitglied für dich stumm, hebt die Stummschaltung auf oder wechselt sie</value>
+  </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Name" xml:space="preserve">
+    <value>Benutzer stummschalten</value>
+  </data>
   <data name="Integrations.Discord.Actions.NoiseSuppression.Description" xml:space="preserve">
     <value>Schaltet Discords Standard-Rauschunterdrückung ein oder aus. Dies ist nicht Krisp: Discords RPC-Schnittstelle stellt nur den Standard-Umschalter bereit, daher kann diese Aktion die Krisp-Rauschunterdrückung nicht steuern.</value>
   </data>
@@ -5427,6 +5433,12 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   <data name="Integrations.Discord.Actions.SetRichPresence.WatchingOption" xml:space="preserve">
     <value>Sieht</value>
   </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Description" xml:space="preserve">
+    <value>Legt die Lautstärke eines Sprachkanalmitglieds fest, erhöht oder verringert sie</value>
+  </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Name" xml:space="preserve">
+    <value>Benutzerlautstärke festlegen</value>
+  </data>
   <data name="Integrations.Discord.Actions.SetVoiceMode.Description" xml:space="preserve">
     <value>Wechselt zwischen Push-to-Talk und Sprachaktivierung</value>
   </data>
@@ -5486,6 +5498,12 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   </data>
   <data name="Integrations.Discord.Actions.VoiceToggle.TurnOnOption" xml:space="preserve">
     <value>Einschalten</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserDescription" xml:space="preserve">
+    <value>Ein Mitglied des aktuellen Sprachkanals. Es kann auch eine Benutzer-ID eingefügt werden.</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserLabel" xml:space="preserve">
+    <value>Benutzer</value>
   </data>
   <data name="Integrations.Discord.Config.AuthorizationDeclined" xml:space="preserve">
     <value>Discord hat die Autorisierung abgelehnt: {details}</value>
@@ -5574,11 +5592,17 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   <data name="Integrations.Discord.Errors.NoRichPresenceDetails" xml:space="preserve">
     <value>Es wurden keine Rich-Presence-Details konfiguriert.</value>
   </data>
+  <data name="Integrations.Discord.Errors.NoUserSelected" xml:space="preserve">
+    <value>Es wurde kein Benutzer ausgewählt.</value>
+  </data>
   <data name="Integrations.Discord.Errors.NoWebhookUrl" xml:space="preserve">
     <value>Es wurde keine Webhook-URL konfiguriert.</value>
   </data>
   <data name="Integrations.Discord.Errors.NotSetUp" xml:space="preserve">
     <value>Discord ist nicht eingerichtet.</value>
+  </data>
+  <data name="Integrations.Discord.Errors.UnknownUser" xml:space="preserve">
+    <value>Der ausgewählte Benutzer ist nicht im aktuellen Sprachkanal.</value>
   </data>
   <data name="Integrations.Discord.Errors.VoiceActionFailed" xml:space="preserve">
     <value>Die Discord-Sprachaktion ist fehlgeschlagen: {details}</value>

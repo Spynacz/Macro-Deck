@@ -127,6 +127,63 @@ internal sealed class DiscordConnectionTests
 	}
 
 	[Test]
+	public async Task A_voice_state_update_tracks_a_member_outside_the_self_flags()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}""");
+
+		var member = connection.State.VoiceUsers.SingleOrDefault(u => u.UserId == "u2");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(member, Is.Not.Null);
+			Assert.That(member!.Name, Is.EqualTo("Friend"));
+			Assert.That(member.Volume, Is.EqualTo(80));
+			Assert.That(connection.State.ServerMuted, Is.False, "another member is not a server mute of ours");
+		});
+	}
+
+	[Test]
+	public async Task A_voice_state_delete_forgets_the_member()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}""");
+		Assert.That(connection.State.VoiceUsers.Any(u => u.UserId == "u2"), Is.True);
+
+		_client.RaiseEvent("VOICE_STATE_DELETE", """{"user":{"id":"u2","username":"friend"},"nick":"Friend"}""");
+
+		Assert.That(connection.State.VoiceUsers.Any(u => u.UserId == "u2"), Is.False);
+	}
+
+	[Test]
+	public async Task Setting_a_user_volume_updates_the_tracked_member()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RespondsWithEcho("SET_USER_VOICE_SETTINGS");
+		var result = await connection.SetUserVoiceSettingsAsync(
+			new DiscordUserVoiceSettingsPatch { UserId = "u2", Volume = 90 });
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Outcome, Is.EqualTo(DiscordUserVoiceSettingsOutcome.Applied));
+			Assert.That(_client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
+			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u2").Volume, Is.EqualTo(90));
+		});
+	}
+
+	[Test]
 	public async Task Leaving_a_channel_unsubscribes_and_forgets_the_channel()
 	{
 		using var connection = Create();
