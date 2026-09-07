@@ -6212,6 +6212,12 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   <data name="Integrations.Discord.Actions.Mute.OnLabel" xml:space="preserve">
     <value>Ztlumit</value>
   </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Description" xml:space="preserve">
+    <value>Místně ztlumí, zapne nebo přepne zvuk jednoho člena hlasového kanálu</value>
+  </data>
+  <data name="Integrations.Discord.Actions.MuteUser.Name" xml:space="preserve">
+    <value>Ztlumit uživatele</value>
+  </data>
   <data name="Integrations.Discord.Actions.NoiseSuppression.Description" xml:space="preserve">
     <value>Zapne nebo vypne standardní potlačení šumu Discordu. Nejedná se o Krisp: rozhraní RPC Discordu zpřístupňuje pouze přepínač standardního potlačení, takže tato akce nemůže ovládat potlačení šumu Krisp.</value>
   </data>
@@ -6299,6 +6305,12 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   <data name="Integrations.Discord.Actions.SetRichPresence.WatchingOption" xml:space="preserve">
     <value>Sleduje</value>
   </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Description" xml:space="preserve">
+    <value>Nastaví, zvýší nebo sníží hlasitost jednoho člena hlasového kanálu</value>
+  </data>
+  <data name="Integrations.Discord.Actions.SetUserVolume.Name" xml:space="preserve">
+    <value>Nastavit hlasitost uživatele</value>
+  </data>
   <data name="Integrations.Discord.Actions.SetVoiceMode.Description" xml:space="preserve">
     <value>Přepíná mezi režimem Push-to-talk a hlasovou aktivitou</value>
   </data>
@@ -6371,6 +6383,11 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   <data name="Integrations.Discord.Config.AccessDeniedUnknown" xml:space="preserve">
     <value>Discord odmítl připojení a Macro Deck nedokázal zjistit proč. Zkontrolujte, zda Macro Deck a Discord běží pod stejným uživatelem se stejnými oprávněními a zda Macro Deck neblokuje žádný bezpečnostní software, a zkuste to znovu.</value>
   </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserDescription" xml:space="preserve">
+    <value>Člen aktuálního hlasového kanálu. Lze vložit i ID uživatele.</value>
+  </data>
+  <data name="Integrations.Discord.Actions.VoiceUser.UserLabel" xml:space="preserve">
+    <value>Uživatel</value>  </data>
   <data name="Integrations.Discord.Config.AuthorizationDeclined" xml:space="preserve">
     <value>Discord odmítl autorizaci: {details}</value>
   </data>
@@ -6458,11 +6475,17 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   <data name="Integrations.Discord.Errors.NoRichPresenceDetails" xml:space="preserve">
     <value>Nebyly nastaveny žádné údaje Rich Presence.</value>
   </data>
+  <data name="Integrations.Discord.Errors.NoUserSelected" xml:space="preserve">
+    <value>Nebyl vybrán žádný uživatel.</value>
+  </data>
   <data name="Integrations.Discord.Errors.NoWebhookUrl" xml:space="preserve">
     <value>Nebyla nastavena žádná URL adresa webhooku.</value>
   </data>
   <data name="Integrations.Discord.Errors.NotSetUp" xml:space="preserve">
     <value>Discord není nastaven.</value>
+  </data>
+  <data name="Integrations.Discord.Errors.UnknownUser" xml:space="preserve">
+    <value>Vybraný uživatel není v aktuálním hlasovém kanálu.</value>
   </data>
   <data name="Integrations.Discord.Errors.VoiceActionFailed" xml:space="preserve">
     <value>Hlasová akce Discordu se nezdařila: {details}</value>
