@@ -1,3 +1,4 @@
+using MacroDeckHost.Integrations;
 using MacroDeckHost.Integrations.Discord.Rpc;
 using MacroDeck.Localization;
 using MacroDeck.Sdk.Actions;
@@ -7,7 +8,9 @@ using Serilog;
 
 namespace MacroDeckHost.Integrations.Discord.Actions;
 
-internal sealed class MuteUserActionDefinition : IActionDefinition, IDynamicOptionsActionDefinition
+internal sealed class MuteUserActionDefinition
+	: IActionDefinition, IDynamicOptionsActionDefinition, IIconProviderActionDefinition,
+		IStateProviderActionDefinition
 {
 	private readonly Func<DiscordConnection?> _resolver;
 
@@ -32,6 +35,32 @@ internal sealed class MuteUserActionDefinition : IActionDefinition, IDynamicOpti
 	public IReadOnlyList<ActionParameter> Parameters { get; }
 
 	public IActionExecutor CreateExecutor() => new Executor(_resolver);
+
+	// A member's mute can only change elsewhere, so the button learns about it from the poll -
+	// the host minimum, since every read is answered from already-held state.
+	public TimeSpan StatePollInterval => TimeSpan.FromSeconds(1);
+
+	// The same read the executor toggles against, so a button following this instance shows the
+	// member's live mute state and offers the shared muted/unmuted styling for it.
+	public Task<ActionStateSnapshot?> GetActionStateAsync(
+		IReadOnlyDictionary<string, object?> parameters,
+		CancellationToken cancellationToken)
+	{
+		var member = DiscordVoiceUserParameters.FindConfiguredUser(_resolver(), parameters);
+		return Task.FromResult<ActionStateSnapshot?>(ActionStates.Snapshot(ActionStates.Mute,
+			member?.Muted));
+	}
+
+	public Task<ActionIconSnapshot?> GetActionIconAsync(
+		IReadOnlyDictionary<string, object?> parameters,
+		CancellationToken cancellationToken)
+		=> Task.FromResult(DiscordVoiceUserParameters.GetIcon(_resolver(), parameters));
+
+	public Task<ActionIconContent?> GetActionIconContentAsync(
+		IReadOnlyDictionary<string, object?> parameters,
+		string version,
+		CancellationToken cancellationToken)
+		=> DiscordVoiceUserParameters.GetIconContentAsync(_resolver(), parameters, version, cancellationToken);
 
 	public Task<DynamicOptionsResult> GetDynamicOptionsAsync(
 		DynamicOptionsContext context,

@@ -63,7 +63,8 @@ internal sealed class DiscordConnection : IDisposable
 		Func<DiscordTokens, CancellationToken, Task> persistTokens,
 		DiscordEventEmitter? events = null,
 		TimeSpan? reconnectDelay = null,
-		Action<DiscordState, DiscordState>? onStateChanged = null)
+		Action<DiscordState, DiscordState>? onStateChanged = null,
+		DiscordAvatarCache? avatarCache = null)
 	{
 		_clientFactory = clientFactory;
 		_oauth = oauth;
@@ -74,6 +75,7 @@ internal sealed class DiscordConnection : IDisposable
 		_events = events;
 		_reconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(10);
 		_onStateChanged = onStateChanged;
+		Avatars = avatarCache ?? new DiscordAvatarCache();
 	}
 
 	public DiscordState State
@@ -94,6 +96,8 @@ internal sealed class DiscordConnection : IDisposable
 	public DiscordIpcDenial? AccessDenial { get; private set; }
 
 	public bool HasIgnoredVoiceSettings => !_ignoredVoiceSettings.IsEmpty;
+
+	public DiscordAvatarCache Avatars { get; }
 
 	public IReadOnlyList<string> IgnoredVoiceSettings
 	{

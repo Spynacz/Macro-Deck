@@ -7,7 +7,8 @@ using Serilog;
 
 namespace MacroDeckHost.Integrations.Discord.Actions;
 
-internal sealed class SetUserVolumeActionDefinition : IActionDefinition, IDynamicOptionsActionDefinition
+internal sealed class SetUserVolumeActionDefinition
+	: IActionDefinition, IDynamicOptionsActionDefinition, IIconProviderActionDefinition
 {
 	internal const string VolumeParameter = "volume";
 
@@ -42,6 +43,17 @@ internal sealed class SetUserVolumeActionDefinition : IActionDefinition, IDynami
 	public IReadOnlyList<ActionParameter> Parameters { get; }
 
 	public IActionExecutor CreateExecutor() => new Executor(_resolver);
+
+	public Task<ActionIconSnapshot?> GetActionIconAsync(
+		IReadOnlyDictionary<string, object?> parameters,
+		CancellationToken cancellationToken)
+		=> Task.FromResult(DiscordVoiceUserParameters.GetIcon(_resolver(), parameters));
+
+	public Task<ActionIconContent?> GetActionIconContentAsync(
+		IReadOnlyDictionary<string, object?> parameters,
+		string version,
+		CancellationToken cancellationToken)
+		=> DiscordVoiceUserParameters.GetIconContentAsync(_resolver(), parameters, version, cancellationToken);
 
 	public Task<DynamicOptionsResult> GetDynamicOptionsAsync(
 		DynamicOptionsContext context,
@@ -98,7 +110,7 @@ internal sealed class SetUserVolumeActionDefinition : IActionDefinition, IDynami
 					AppStrings.Integrations.Discord.Errors.UnknownUser());
 			}
 
-			var current = member?.Volume ?? 100d;
+			var current = member is null ? 100d : DiscordPerceptualVolume.ToDisplay(member.Volume);
 			var target = mode switch
 			{
 				DiscordActionParameters.ModeIncrease => current + value,
@@ -110,7 +122,7 @@ internal sealed class SetUserVolumeActionDefinition : IActionDefinition, IDynami
 				.SetUserVoiceSettingsAsync(new DiscordUserVoiceSettingsPatch
 				{
 					UserId = userId,
-					Volume = (int)Math.Clamp(Math.Round(target), 0d, MaxVolume)
+					Volume = DiscordPerceptualVolume.ToRpc(Math.Clamp(target, 0d, MaxVolume))
 				},
 				context.CancellationToken)
 				.ConfigureAwait(false);

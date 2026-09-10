@@ -6,6 +6,8 @@ internal sealed record DiscordVoiceUser
 
 	public string? Name { get; init; }
 
+	public string? AvatarHash { get; init; }
+
 	public double Volume { get; init; } = 100;
 
 	public bool Muted { get; init; }
@@ -76,8 +78,8 @@ internal sealed record DiscordState
 			ServerDeafened = false,
 			SelfSpeaking = false,
 			VoiceConnectionState = null,
-			AveragePing = null
-				VoiceUsers = []
+			AveragePing = null,
+			VoiceUsers = []
 		};
 	}
 }
