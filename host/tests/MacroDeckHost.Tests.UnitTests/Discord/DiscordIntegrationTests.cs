@@ -364,6 +364,141 @@ internal sealed class DiscordIntegrationTests
 	}
 
 	[Test]
+	public void Voice_channel_members_are_offered_as_a_variable_catalog()
+	{
+		var integration = new DiscordIntegration();
+
+		Assert.That(integration.SupportsCatalog, Is.True);
+	}
+
+	[Test]
+	public async Task The_catalog_is_empty_while_discord_is_not_set_up()
+	{
+		var integration = new DiscordIntegration();
+
+		var page = await integration.DiscoverAsync(new VariableCatalogQuery(), CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(page.Items, Is.Empty);
+			Assert.That(integration.CatalogEntryCount, Is.Null);
+		});
+	}
+
+	[Test]
+	public async Task The_catalog_lists_one_writable_volume_per_member()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+
+		var page = await integration.DiscoverAsync(new VariableCatalogQuery(), CancellationToken.None);
+
+		Assert.That(page.Items.Select(i => i.ResolvedId),
+			Is.EquivalentTo(["user-volume-me", "user-volume-u2", "user-volume-u3"]));
+		Assert.Multiple(() =>
+		{
+			Assert.That(integration.CatalogEntryCount, Is.EqualTo(3));
+			Assert.That(page.Items.Select(i => i.Materialization), Is.All.EqualTo(VariableMaterialization.OnDemand));
+			Assert.That(page.Items.Select(i => i.Type), Is.All.EqualTo(VariableType.Numeric));
+			Assert.That(page.Items.Select(i => i.CanWrite), Is.All.True);
+			Assert.That(page.Items.Select(i => i.Unit), Is.All.EqualTo("%"));
+			Assert.That(page.Items.Select(i => i.SemanticKind), Is.All.EqualTo(VariableSemanticKinds.Percentage));
+			Assert.That(page.Items.Single(i => i.ResolvedId == "user-volume-u2").DisplayName,
+				Has.Property("Literal").EqualTo("Friend"));
+		});
+	}
+
+	[Test]
+	public async Task A_member_volume_reads_its_tracked_level_with_slider_bounds()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+
+		var reading = await integration.ReadAsync("user-volume-u2", CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(reading.Value, Is.EqualTo(92d));
+			Assert.That(reading.Min, Is.EqualTo(0));
+			Assert.That(reading.Max, Is.EqualTo(200));
+			Assert.That(reading.Step, Is.EqualTo(1));
+		});
+	}
+
+	[Test]
+	public async Task A_left_member_reads_as_unavailable()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+
+		var reading = await integration.ReadAsync("user-volume-ghost", CancellationToken.None);
+
+		Assert.That(reading.Value, Is.Null);
+	}
+
+	[Test]
+	public async Task A_member_variable_resolves_even_after_the_member_left()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+
+		var resolved = await integration.ResolveAsync("user-volume-ghost", CancellationToken.None);
+		var unknown = await integration.ResolveAsync("discord-nonsense", CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(resolved, Is.Not.Null);
+			Assert.That(resolved!.ResolvedId, Is.EqualTo("user-volume-ghost"));
+			Assert.That(resolved.CanWrite, Is.True, "a saved slider binding must survive the member leaving");
+			Assert.That(unknown, Is.Null);
+		});
+	}
+
+	[Test]
+	public async Task Writing_a_member_volume_drives_discord()
+	{
+		var client = new FakeDiscordRpcClient();
+		using var integration = await ConnectedIntegrationAsync(client);
+
+		var result = await integration.SetValueAsync("user-volume-u2", 90d, CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Status, Is.EqualTo(VariableWriteStatus.Applied));
+			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u2","volume":74}"""));
+		});
+	}
+
+	[Test]
+	public async Task Writing_a_member_volume_clamps_to_what_discord_accepts()
+	{
+		var client = new FakeDiscordRpcClient();
+		using var integration = await ConnectedIntegrationAsync(client);
+
+		await integration.SetValueAsync("user-volume-u2", 250d, CancellationToken.None);
+
+		Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+			Is.EqualTo("""{"user_id":"u2","volume":200}"""));
+	}
+
+	[Test]
+	public async Task Writing_a_member_volume_while_discord_is_unreachable_is_refused()
+	{
+		var integration = new DiscordIntegration();
+
+		var result = await integration.SetValueAsync("user-volume-u2", 90d, CancellationToken.None);
+
+		Assert.That(result.Status, Is.EqualTo(VariableWriteStatus.Unavailable));
+	}
+
+	[Test]
+	public async Task Writing_a_member_volume_rejects_a_non_number()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+
+		var result = await integration.SetValueAsync("user-volume-u2", "loud", CancellationToken.None);
+
+		Assert.That(result.Status, Is.EqualTo(VariableWriteStatus.InvalidValue));
+	}
+
+	[Test]
 	public void The_brand_icon_is_embedded_as_svg()
 	{
 		var integration = new DiscordIntegration();
@@ -382,5 +517,52 @@ internal sealed class DiscordIntegrationTests
 
 		Assert.DoesNotThrowAsync(async () => await integration.ShutdownAsync());
 		Assert.DoesNotThrow(integration.Dispose);
+	}
+
+	private static async Task<DiscordIntegration> ConnectedIntegrationAsync(FakeDiscordRpcClient? client = null)
+	{
+		var connection = await ConnectAsync(client ?? MemberClient());
+		var integration = new DiscordIntegration();
+		InjectConnection(integration, connection);
+		return integration;
+	}
+
+	private static void InjectConnection(DiscordIntegration integration, DiscordConnection connection)
+		=> typeof(DiscordIntegration).GetField("_connection", BindingFlags.NonPublic | BindingFlags.Instance)!
+			.SetValue(integration, connection);
+
+	private static FakeDiscordRpcClient MemberClient() => new FakeDiscordRpcClient()
+		.Responds("AUTHENTICATE",
+			"""{"user":{"id":"me","username":"tester"},"scopes":["rpc","rpc.voice.read","rpc.voice.write"]}""")
+		.Responds("GET_VOICE_SETTINGS", """{"mute":false,"deaf":false}""")
+		.Responds("GET_SELECTED_VOICE_CHANNEL",
+			"""
+			{"id":"555","name":"General","guild_id":"999","voice_states":[
+				{"user":{"id":"me","username":"tester"},"nick":"tester","volume":100,"mute":false},
+				{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false},
+				{"user":{"id":"u3","username":"lurker"},"volume":110,"mute":true}]}
+			""")
+		.Responds("GET_GUILDS", """{"guilds":[{"id":"999","name":"My Server"}]}""")
+		.RespondsWithEcho("SET_USER_VOICE_SETTINGS");
+
+	private static async Task<DiscordConnection> ConnectAsync(FakeDiscordRpcClient client)
+	{
+		var connection = new DiscordConnection(() => client,
+			new FakeDiscordOAuthClient(),
+			"123456",
+			"secret",
+			new DiscordTokens("stored-access", "stored-refresh", ExpiresAt: null, "rpc rpc.voice.read rpc.voice.write"),
+			(_, _) => Task.CompletedTask,
+			events: null,
+			TimeSpan.FromMinutes(5));
+
+		connection.Start();
+		for (var attempt = 0; attempt < 300 && !connection.State.IsConnected; attempt++)
+		{
+			await Task.Delay(10);
+		}
+
+		Assert.That(connection.State.IsConnected, Is.True, "the fake connection did not come up in time");
+		return connection;
 	}
 }

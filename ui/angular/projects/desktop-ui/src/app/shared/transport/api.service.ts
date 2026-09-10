@@ -107,6 +107,7 @@ import {
   GetActionButtonStateOptionsResponse,
   GetActionParameterOptionsRequest,
   GetActionParameterOptionsResponse,
+  GetActionProviderIconContentRequest,
   GetActionProviderIconRequest,
   GetActionProviderIconResponse,
   GetActionsResponse,
@@ -1891,6 +1892,19 @@ export class ApiService {
 
   getActionProviderIcon(request: GetActionProviderIconRequest): Promise<GetActionProviderIconResponse> {
     return this.http('POST', '/api/actions/provider-icon', request);
+  }
+
+  async getActionProviderIconContent(request: GetActionProviderIconContentRequest):
+    Promise<{ blob: Blob; mediaType: string }> {
+    const response = await this.fetchWithAuth('/api/actions/provider-icon-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new TransportError(response.status, `Icon download failed (${response.status})`);
+    }
+    return { blob: await response.blob(), mediaType: response.headers.get('Content-Type') ?? 'image/png' };
   }
 
   getFilesystemEntries(request: GetFilesystemEntriesRequest): Promise<GetFilesystemEntriesResponse> {

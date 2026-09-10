@@ -19732,9 +19732,6 @@ Download it from the Macro Deck website and update the AppImage, DEB or RPM you 
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>State from {integration}: {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Use provided icon</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Use selected</value>
   </data>
@@ -19758,6 +19755,9 @@ Download it from the Macro Deck website and update the AppImage, DEB or RPM you 
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Turn on Multi state</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Use provided icon</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Use provided states</value>

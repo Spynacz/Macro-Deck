@@ -19712,9 +19712,6 @@ Scaricalo dal sito di Macro Deck e aggiorna l'AppImage, il DEB o l'RPM che hai i
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>Stato da {integration}: {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Usa l'icona fornita</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Usa la selezione</value>
   </data>
@@ -19738,6 +19735,9 @@ Scaricalo dal sito di Macro Deck e aggiorna l'AppImage, il DEB o l'RPM che hai i
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Attiva Stato multiplo</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Usa l'icona fornita</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Usa gli stati forniti</value>

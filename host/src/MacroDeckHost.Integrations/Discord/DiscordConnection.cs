@@ -56,7 +56,8 @@ internal sealed class DiscordConnection : IDisposable
 		DiscordTokens tokens,
 		Func<DiscordTokens, CancellationToken, Task> persistTokens,
 		DiscordEventEmitter? events = null,
-		TimeSpan? reconnectDelay = null)
+		TimeSpan? reconnectDelay = null,
+		DiscordAvatarCache? avatarCache = null)
 	{
 		_clientFactory = clientFactory;
 		_oauth = oauth;
@@ -66,6 +67,7 @@ internal sealed class DiscordConnection : IDisposable
 		_persistTokens = persistTokens;
 		_events = events;
 		_reconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(10);
+		Avatars = avatarCache ?? new DiscordAvatarCache();
 	}
 
 	public DiscordState State
@@ -86,6 +88,8 @@ internal sealed class DiscordConnection : IDisposable
 	public bool AccessDenied { get; private set; }
 
 	public bool HasIgnoredVoiceSettings => !_ignoredVoiceSettings.IsEmpty;
+
+	public DiscordAvatarCache Avatars { get; }
 
 	public IReadOnlyList<string> IgnoredVoiceSettings
 	{

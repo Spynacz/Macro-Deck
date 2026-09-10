@@ -227,6 +227,13 @@ export interface GetActionProviderIconRequest {
   parameters?: Record<string, unknown>;
 }
 
+export interface GetActionProviderIconContentRequest {
+  integrationId: string;
+  actionId: string;
+  parameters?: Record<string, unknown>;
+  version: string;
+}
+
 export interface GetActionProviderIconResponse {
   hasSnapshot: boolean;
   version: string;

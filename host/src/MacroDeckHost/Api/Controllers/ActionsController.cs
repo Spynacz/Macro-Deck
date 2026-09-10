@@ -1,6 +1,10 @@
+using MacroDeckHost.Application.Integrations;
+using MacroDeckHost.Application.Plugins.Capabilities.Adapters.Actions;
+using MacroDeckHost.Application.Ui.Handlers;
 using MacroDeckHost.Application.Ui.Transport;
 using MacroDeckHost.Application.Ui.Transport.Messages.Actions;
 using MacroDeckHost.Auth;
+using MacroDeck.Sdk.Actions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -28,6 +32,10 @@ public class ActionsController : ControllerBase
 	private readonly IUiTransportMessageHandler<GetActionProviderIconRequest, GetActionProviderIconResponse>
 		_getProviderIcon;
 
+	private readonly IIntegrationRegistry _integrations;
+
+	private readonly RemoteIconProviderActionRegistry _remoteIconProviders;
+
 	public ActionsController(
 		IUiTransportMessageHandler<GetActionsRequest, GetActionsResponse> getActions,
 		IUiTransportMessageHandler<ExecuteActionButtonTriggerRequest, ExecuteActionButtonTriggerResponse>
@@ -38,7 +46,9 @@ public class ActionsController : ControllerBase
 			getParameterOptions,
 		IUiTransportMessageHandler<GetActionProviderStatesRequest, GetActionProviderStatesResponse>
 			getProviderStates,
-		IUiTransportMessageHandler<GetActionProviderIconRequest, GetActionProviderIconResponse> getProviderIcon)
+		IUiTransportMessageHandler<GetActionProviderIconRequest, GetActionProviderIconResponse> getProviderIcon,
+		IIntegrationRegistry integrations,
+		RemoteIconProviderActionRegistry remoteIconProviders)
 	{
 		_getActions = getActions;
 		_executeActionButtonTrigger = executeActionButtonTrigger;
@@ -47,6 +57,8 @@ public class ActionsController : ControllerBase
 		_getParameterOptions = getParameterOptions;
 		_getProviderStates = getProviderStates;
 		_getProviderIcon = getProviderIcon;
+		_integrations = integrations;
+		_remoteIconProviders = remoteIconProviders;
 	}
 
 	[HttpGet]
@@ -104,5 +116,60 @@ public class ActionsController : ControllerBase
 		CancellationToken ct)
 	{
 		return _getProviderIcon.Handle(body, ct).AsTask();
+	}
+
+	[HttpPost("provider-icon-content")]
+	public async Task<IActionResult> GetProviderIconContent(
+		GetActionProviderIconContentRequest body,
+		CancellationToken ct)
+	{
+		ArgumentNullException.ThrowIfNull(body);
+
+		if (string.IsNullOrWhiteSpace(body.Version))
+		{
+			return NotFound();
+		}
+
+		var provider = ResolveIconProvider(body.IntegrationId, body.ActionId);
+		if (provider is null)
+		{
+			return NotFound();
+		}
+
+		ActionIconContent? content;
+		try
+		{
+			content = await provider
+				.GetActionIconContentAsync(ActionParameterConverter.ToNullable(body.Parameters ?? []),
+					body.Version,
+					ct)
+				.ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ex is not OperationCanceledException)
+		{
+			return NotFound();
+		}
+
+		if (content is null || content.Data.Length == 0 || string.IsNullOrWhiteSpace(content.MediaType))
+		{
+			return NotFound();
+		}
+
+		return File(content.Data, content.MediaType);
+	}
+
+	private IIconProviderActionDefinition? ResolveIconProvider(string integrationId, string actionId)
+	{
+		if (!_integrations.IsEnabled(integrationId))
+		{
+			return null;
+		}
+
+		return _integrations.FindAction(integrationId, actionId) switch
+		{
+			IIconProviderActionDefinition direct => direct,
+			RemoteActionDefinition { ProvidesIcon: true } => _remoteIconProviders.Resolve(integrationId, actionId),
+			_ => null
+		};
 	}
 }

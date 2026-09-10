@@ -19712,9 +19712,6 @@ Télécharge-le depuis le site web de Macro Deck et mets à jour l'AppImage, le 
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>État depuis {integration} : {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Utiliser l'icône fournie</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Utiliser la sélection</value>
   </data>
@@ -19738,6 +19735,9 @@ Télécharge-le depuis le site web de Macro Deck et mets à jour l'AppImage, le 
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Activer le mode multi-état</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Utiliser l'icône fournie</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Utiliser les états fournis</value>

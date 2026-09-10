@@ -19,6 +19,9 @@
         [tileDrawsBorder]="true">
       </shared-ui-tree-widget>
       <shared-widget-border-overlay [border]="previewBorder()" />
+      @if (providerIconUrl(); as iconUrl) {
+        <img class="preview-provider-icon" [src]="iconUrl" alt="" />
+      }
     </div>
   </div>
 </ng-template>

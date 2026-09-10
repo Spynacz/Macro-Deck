@@ -42,6 +42,9 @@ public sealed class DiscordIntegration
 	// Discord's own limits: an input is attenuation only, while an output may be amplified to double.
 	private const double MaxInputVolume = 100d;
 	private const double MaxOutputVolume = 200d;
+	private const double MaxUserVolume = 200d;
+
+	internal const string UserVolumePrefix = "user-volume-";
 
 	private static readonly ILogger _logger = IntegrationLog.For<DiscordIntegration>(IntegrationId);
 	private static readonly byte[] _icon = LoadIcon();
@@ -279,6 +282,16 @@ public sealed class DiscordIntegration
 	{
 		var connection = _connection;
 		var state = connection?.State ?? DiscordState.Disconnected;
+
+		if (TryParseUserVolumeId(localId, out var userId))
+		{
+			var member = state.VoiceUsers.FirstOrDefault(u => string.Equals(u.UserId, userId, StringComparison.Ordinal));
+			return ValueTask.FromResult(member is null
+				? VariableReading.Unavailable
+				: VariableReading.Of(Math.Round(DiscordPerceptualVolume.ToDisplay(member.Volume),
+					MidpointRounding.AwayFromZero), 0, MaxUserVolume, 1));
+		}
+
 		var value = ReadVariable(state, localId);
 
 		return ValueTask.FromResult(localId switch
@@ -294,6 +307,35 @@ public sealed class DiscordIntegration
 		object? value,
 		CancellationToken cancellationToken = default)
 	{
+		if (TryParseUserVolumeId(localId, out var userId))
+		{
+			if (_connection is not { } userConnection)
+			{
+				return VariableWriteResult.Unavailable();
+			}
+
+			if (!TryReadNumber(value, out var userPercent))
+			{
+				return VariableWriteResult.InvalidValue();
+			}
+
+			var result = await userConnection
+				.SetUserVoiceSettingsAsync(new DiscordUserVoiceSettingsPatch
+				{
+					UserId = userId,
+					Volume = DiscordPerceptualVolume.ToRpc(userPercent)
+				},
+				cancellationToken)
+				.ConfigureAwait(false);
+
+			return result.Outcome switch
+			{
+				DiscordUserVoiceSettingsOutcome.Applied => VariableWriteResult.Applied(),
+				DiscordUserVoiceSettingsOutcome.NotConnected => VariableWriteResult.Unavailable(),
+				_ => VariableWriteResult.Failed()
+			};
+		}
+
 		var output = localId switch
 		{
 			InputVolumeId => false,
@@ -325,14 +367,77 @@ public sealed class DiscordIntegration
 			? new DiscordVoiceSettingsPatch { Output = device }
 			: new DiscordVoiceSettingsPatch { Input = device };
 
-		var result = await connection.SetVoiceSettingsAsync(patch, cancellationToken).ConfigureAwait(false);
+		var voiceResult = await connection.SetVoiceSettingsAsync(patch, cancellationToken).ConfigureAwait(false);
 
-		return result.Outcome switch
+		return voiceResult.Outcome switch
 		{
 			DiscordVoiceSettingsOutcome.Confirmed => VariableWriteResult.Applied(),
 			DiscordVoiceSettingsOutcome.NotConnected => VariableWriteResult.Unavailable(),
 			_ => VariableWriteResult.Failed()
 		};
+	}
+
+	public bool SupportsCatalog => true;
+
+	public int? CatalogEntryCount
+		=> _connection?.State is { IsConnected: true } state ? state.VoiceUsers.Count : null;
+
+	public ValueTask<VariableCatalogPage> DiscoverAsync(
+		VariableCatalogQuery query,
+		CancellationToken cancellationToken = default)
+	{
+		if (_connection?.State is not { IsConnected: true } state || state.VoiceUsers.Count == 0)
+		{
+			return ValueTask.FromResult(VariableCatalogPage.Empty);
+		}
+
+		return ValueTask.FromResult(new VariableCatalogPage
+		{
+			Items = [.. state.VoiceUsers.Select(member => UserVolumeDefinition(member.UserId, member.Name))]
+		});
+	}
+
+	public ValueTask<VariableDefinition?> ResolveAsync(
+		string localId,
+		CancellationToken cancellationToken = default)
+	{
+		if (TryParseUserVolumeId(localId, out var userId))
+		{
+			var name = _connection?.State.VoiceUsers
+				.FirstOrDefault(u => string.Equals(u.UserId, userId, StringComparison.Ordinal))?.Name;
+			return ValueTask.FromResult<VariableDefinition?>(UserVolumeDefinition(userId, name));
+		}
+
+		return ValueTask.FromResult(Variables.FirstOrDefault(v =>
+			string.Equals(v.ResolvedId, localId, StringComparison.Ordinal)));
+	}
+
+	internal static VariableDefinition UserVolumeDefinition(string userId, string? name)
+	{
+		var display = string.IsNullOrWhiteSpace(name) ? userId : name.Trim();
+		return VariableDefinition.OnDemand(UserVolumePrefix + userId, VariableType.Numeric) with
+		{
+			Name = display,
+			DisplayName = display,
+			Unit = PercentUnit,
+			SemanticKind = VariableSemanticKinds.Percentage,
+			DecimalPlaces = 0,
+			RefreshInterval = TimeSpan.FromSeconds(2),
+			Write = new VariableWriteCapability()
+		};
+	}
+
+	internal static bool TryParseUserVolumeId(string? localId, out string userId)
+	{
+		userId = string.Empty;
+
+		if (string.IsNullOrEmpty(localId) || !localId.StartsWith(UserVolumePrefix, StringComparison.Ordinal))
+		{
+			return false;
+		}
+
+		userId = localId[UserVolumePrefix.Length..];
+		return !string.IsNullOrEmpty(userId);
 	}
 
 	private static bool TryReadNumber(object? value, out double number)

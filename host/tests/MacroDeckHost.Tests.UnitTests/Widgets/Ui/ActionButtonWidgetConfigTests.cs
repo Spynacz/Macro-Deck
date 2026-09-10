@@ -390,6 +390,36 @@ public class ActionButtonWidgetConfigTests
 	}
 
 	[Test]
+	public void An_adopted_face_keeps_a_customized_appearance()
+	{
+		var host = Render(new
+		{
+			stateMode = true,
+			states = new object[]
+			{
+				new { id = "muted", label = "Muted", appearance = new { backgroundColor = "#c53030" } },
+				new { id = "unmuted", label = "Unmuted" },
+			},
+			stateProvider = new { blockId = "b1", integrationId = "int", actionId = "act", actionLabel = "Mute" },
+		});
+
+		host.ById("activeStateId").Change("muted");
+		host.ById("states.muted.appearance.backgroundColor").Change("#ff0000");
+
+		var composed = ComposeRootWithStates(host);
+		var muted = composed.GetProperty("states")
+			.EnumerateArray()
+			.Single(s => s.GetProperty("id").GetString() == "muted");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(muted.GetProperty("appearance").GetProperty("backgroundColor").GetString(),
+				Is.EqualTo("#ff0000"));
+			AssertValidatesAgainstSchema(composed);
+		});
+	}
+
+	[Test]
 	public void Removing_a_state_provider_restores_the_manual_state_backup()
 	{
 		var host = Render(new
@@ -1302,6 +1332,46 @@ public class ActionButtonWidgetConfigTests
 			Assert.That(borderColor.Flag(UiConfigProperties.SupportsReset), Is.True);
 			Assert.That(borderColor.Text(UiConfigProperties.DefaultValue), Is.EqualTo(string.Empty));
 		});
+	}
+
+	[Test]
+	public void Adopted_provider_links_round_trip_through_composition()
+	{
+		var host = Render(new
+		{
+			stateMode = true,
+			states = new object[] { new { id = "muted", label = "Muted" }, new { id = "unmuted", label = "Unmuted" } },
+			stateProvider = new
+			{
+				blockId = "b1",
+				integrationId = "int",
+				actionId = "act",
+				actionLabel = "Mute",
+				states = new object[]
+				{
+					new { id = "muted", label = "Muted" },
+					new { id = "unmuted", label = "Unmuted" },
+				},
+			},
+			iconProvider = new { blockId = "b1", integrationId = "int", actionId = "act", actionLabel = "Mute" },
+			flows = FlowWith("b1"),
+		});
+
+		var stateLink = host.ById("stateProvider").Property(UiConfigProperties.Value);
+		var iconLink = host.ById("iconProvider").Property(UiConfigProperties.Value);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(stateLink?.GetProperty("blockId").GetString(), Is.EqualTo("b1"));
+			Assert.That(stateLink?.GetProperty("states").EnumerateArray().Select(s => s.GetProperty("id").GetString()),
+				Is.EqualTo(new[] { "muted", "unmuted" }));
+			Assert.That(iconLink?.GetProperty("blockId").GetString(), Is.EqualTo("b1"));
+		});
+
+		var root = JsonNode.Parse(ComposeRootWithStates(host).GetRawText())!.AsObject();
+		root["stateProvider"] = JsonNode.Parse(stateLink!.Value.GetRawText());
+		root["iconProvider"] = JsonNode.Parse(iconLink!.Value.GetRawText());
+		AssertValidatesAgainstSchema(JsonSerializer.Deserialize<JsonElement>(root.ToJsonString()));
 	}
 
 	[Test]

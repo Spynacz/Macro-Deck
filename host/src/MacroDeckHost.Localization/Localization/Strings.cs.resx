@@ -19712,9 +19712,6 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>Stav z {integration}: {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Použít poskytnutou ikonu</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Použít vybrané</value>
   </data>
@@ -19738,6 +19735,9 @@ Stáhněte jej z webu Macro Deck a aktualizujte nainstalovaný AppImage, DEB neb
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Zapnout vícestavový režim</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Použít poskytnutou ikonu</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Použít poskytnuté stavy</value>

@@ -87,6 +87,7 @@ internal static class DiscordStateMapper
 			userId,
 			ReadDouble(data, "volume"),
 			ReadBool(data, "mute"),
+			avatarHash: null,
 			name: null);
 	}
 
@@ -185,6 +186,7 @@ internal static class DiscordStateMapper
 			userId,
 			ReadDouble(entry, "volume"),
 			ReadBool(entry, "mute"),
+			ReadString(entry, "user", "avatar"),
 			string.IsNullOrWhiteSpace(nick) ? displayName : nick.Trim());
 	}
 
@@ -193,6 +195,7 @@ internal static class DiscordStateMapper
 		string userId,
 		double? volume,
 		bool? muted,
+		string? avatarHash,
 		string? name)
 	{
 		var users = state.VoiceUsers;
@@ -211,6 +214,7 @@ internal static class DiscordStateMapper
 		{
 			UserId = userId,
 			Name = name ?? existing?.Name,
+			AvatarHash = avatarHash ?? existing?.AvatarHash,
 			Volume = volume ?? existing?.Volume ?? 100,
 			Muted = muted ?? existing?.Muted ?? false
 		};

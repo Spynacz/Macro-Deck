@@ -4,6 +4,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   GridWidget, UiConfigEntryPoints, UiConfigEvents, UiConfigPrimitives, UiConfigProperties, UiNode, UiNodeEvent,
   WidgetData, WidgetType,
+  type ActionBlock,
+  type GetActionProviderIconContentRequest,
+  type GetActionProviderIconResponse,
 } from '@macro-deck/runtime';
 import {
   ApiService, UiNodeEventBus, UiSessionHandle, UiSessionOpenOptions, UiSessionOpenRequest, UiSessionOpenRequestSource,
@@ -11,6 +14,7 @@ import {
   UiSessionService, WidgetTypeCatalogService, WidgetTypeInfo,
 } from '@shared';
 import { provideLocalizationTesting } from '../../../../../testing/localization-test-support';
+import { WidgetIconProviderService } from '../../../../services/widget-icon-provider.service';
 import { UiRenderContext } from '../../../ui-render/ui-render-context';
 import { WidgetConfigurationEditorComponent } from './widget-configuration-editor.component';
 
@@ -1104,6 +1108,122 @@ describe('WidgetConfigurationEditorComponent', () => {
       await settle(fixture);
 
       expect(ring(fixture)).toBeNull();
+    });
+  });
+  describe('provider icon preview', () => {
+    const userBlock: ActionBlock = {
+      id: 'b1',
+      type: 'action',
+      blockType: 'app.macro-deck.discord.mute-user',
+      label: 'Mute User',
+      color: '#3b82f6',
+      integrationId: 'app.macro-deck.discord',
+      actionId: 'mute-user',
+      parameters: [{ name: 'userId', type: 'dynamic-choice', value: 'u2', label: 'User' }],
+    };
+
+    function iconDraft(): WidgetData {
+      return {
+        label: '',
+        iconProvider: { blockId: 'b1', integrationId: 'app.macro-deck.discord', actionId: 'mute-user' },
+        flows: [{ triggerId: 'onShortPress', triggerType: 'onShortPress', children: [userBlock] }],
+      };
+    }
+
+    function providers(
+      snapshot: GetActionProviderIconResponse | null,
+      blobs: Record<string, Blob> = {},
+    ): { contentRequests: GetActionProviderIconContentRequest[]; previewCalls: () => number } {
+      const contentRequests: GetActionProviderIconContentRequest[] = [];
+      let previewCalls = 0;
+      TestBed.overrideProvider(WidgetIconProviderService, {
+        useValue: {
+          getIconPreview: () => {
+            previewCalls++;
+            return Promise.resolve(snapshot);
+          },
+        },
+      });
+      TestBed.overrideProvider(ApiService, {
+        useValue: {
+          getActionProviderIconContent: (request: GetActionProviderIconContentRequest) => {
+            contentRequests.push(request);
+            const blob = blobs[request.version];
+            return blob
+              ? Promise.resolve({ blob, mediaType: 'image/png' })
+              : Promise.reject(new Error('missing'));
+          },
+        },
+      });
+      return { contentRequests, previewCalls: () => previewCalls };
+    }
+
+    async function overlaySrc(fixture: ComponentFixture<WidgetConfigurationEditorComponent>):
+      Promise<string | null> {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const img = fixture.nativeElement.querySelector('.preview-provider-icon') as HTMLImageElement | null;
+        if (img) return img.src;
+        await new Promise(resolve => setTimeout(resolve, 10));
+        fixture.detectChanges();
+      }
+      return null;
+    }
+
+    it('paints the adopted provider icon over the preview', async () => {
+      const { contentRequests } = providers(
+        { hasSnapshot: true, version: 'v1', mediaType: 'image/png', noIcon: false },
+        { v1: new Blob(['avatar'], { type: 'image/png' }) },
+      );
+      const fixture = await createFixture(widget({ type: WidgetType.ActionButton, data: iconDraft() }));
+
+      expect(await overlaySrc(fixture)).toMatch(/^blob:/);
+      expect(contentRequests).toEqual([jasmine.objectContaining({
+        integrationId: 'app.macro-deck.discord',
+        actionId: 'mute-user',
+        version: 'v1',
+        parameters: { userId: 'u2' },
+      })]);
+    });
+
+    it('keeps the configured icon when the provider cannot answer', async () => {
+      const { contentRequests, previewCalls } = providers(null);
+      const fixture = await createFixture(widget({ type: WidgetType.ActionButton, data: iconDraft() }));
+
+      expect(await overlaySrc(fixture)).toBeNull();
+      expect(previewCalls()).toBeGreaterThan(0);
+      expect(contentRequests).toEqual([]);
+    });
+
+    it('keeps the configured icon when the image cannot load', async () => {
+      providers({ hasSnapshot: true, version: 'v1', mediaType: 'image/png', noIcon: false });
+      const fixture = await createFixture(widget({ type: WidgetType.ActionButton, data: iconDraft() }));
+
+      expect(await overlaySrc(fixture)).toBeNull();
+    });
+
+    it('drops the overlay when the provider is removed from the draft', async () => {
+      providers(
+        { hasSnapshot: true, version: 'v1', mediaType: 'image/png', noIcon: false },
+        { v1: new Blob(['avatar'], { type: 'image/png' }) },
+      );
+      const fixture = await createFixture(widget({ type: WidgetType.ActionButton, data: iconDraft() }));
+      expect(await overlaySrc(fixture)).toMatch(/^blob:/);
+
+      const { iconProvider, ...rest } = iconDraft() as Record<string, unknown>;
+      void iconProvider;
+      fixture.componentRef.setInput('widget', widget({ type: WidgetType.ActionButton, data: rest as WidgetData }));
+      fixture.componentInstance.reload();
+      await settle(fixture);
+
+      expect(await overlaySrc(fixture)).toBeNull();
+    });
+
+    it('never asks the provider when the draft adopted none', async () => {
+      const { previewCalls } = providers(null);
+      const fixture = await createFixture(widget({ type: WidgetType.ActionButton, data: { label: 'Plain' } }));
+
+      expect(await overlaySrc(fixture)).toBeNull();
+      expect(previewCalls()).toBe(0);
     });
   });
 });

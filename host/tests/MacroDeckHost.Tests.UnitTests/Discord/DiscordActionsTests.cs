@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http;
 using MacroDeckHost.Integrations.Discord;
 using MacroDeckHost.Integrations.Discord.Actions;
 using MacroDeckHost.Integrations.Discord.Rpc;
@@ -333,8 +335,8 @@ internal sealed class DiscordActionsTests
 		{
 			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Succeeded));
 			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
-				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
-			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u2").Volume, Is.EqualTo(90));
+				Is.EqualTo("""{"user_id":"u2","volume":74}"""));
+			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u2").Volume, Is.EqualTo(74));
 		});
 	}
 
@@ -358,7 +360,7 @@ internal sealed class DiscordActionsTests
 		{
 			Assert.That(result.Status, Is.EqualTo(ActionResultStatus.Succeeded));
 			Assert.That(client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
-				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
+				Is.EqualTo("""{"user_id":"u2","volume":102}"""));
 		});
 	}
 
@@ -554,6 +556,183 @@ internal sealed class DiscordActionsTests
 		});
 	}
 
+	[TestCase("set-user-volume")]
+	[TestCase("mute-user")]
+	public async Task The_selected_members_avatar_is_offered_as_the_button_icon(string actionId)
+	{
+		using var connection = await ConnectAsync(BuildClientWithMembers());
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == actionId);
+
+		var snapshot = await action.GetActionIconAsync(new Dictionary<string, object?>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2"
+			},
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(snapshot, Is.Not.Null);
+			Assert.That(snapshot!.Version, Is.EqualTo("discord-avatar:u2:a1b2c3"));
+			Assert.That(snapshot.MediaType, Is.EqualTo("image/png"));
+		});
+	}
+
+	[TestCase("set-user-volume", "ghost")]
+	[TestCase("set-user-volume", "u3")]
+	[TestCase("mute-user", "ghost")]
+	public async Task The_button_icon_falls_back_without_a_known_avatar(string actionId, string userId)
+	{
+		using var connection = await ConnectAsync(BuildClientWithMembers());
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == actionId);
+
+		var snapshot = await action.GetActionIconAsync(new Dictionary<string, object?>(StringComparer.Ordinal)
+			{
+				["userId"] = userId
+			},
+			CancellationToken.None);
+
+		Assert.That(snapshot, Is.Null, "the widget keeps its own icon instead of a stale one");
+	}
+
+	[Test]
+	public async Task The_button_icon_falls_back_while_discord_is_not_set_up()
+	{
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => null, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var snapshot = await action.GetActionIconAsync(new Dictionary<string, object?>(StringComparer.Ordinal)
+			{
+				["userId"] = "u2"
+			},
+			CancellationToken.None);
+
+		Assert.That(snapshot, Is.Null);
+	}
+
+	[Test]
+	public async Task The_button_icon_bytes_come_from_the_members_avatar()
+	{
+		var handler = new StubAvatarHandler();
+		using var connection = await ConnectAsync(BuildClientWithMembers(),
+			new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+		var parameters = new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" };
+
+		var first = await action.GetActionIconContentAsync(parameters,
+			"discord-avatar:u2:a1b2c3",
+			CancellationToken.None);
+		var second = await action.GetActionIconContentAsync(parameters,
+			"discord-avatar:u2:a1b2c3",
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(first, Is.Not.Null);
+			Assert.That(first!.MediaType, Is.EqualTo("image/png"));
+			Assert.That(first.Data, Is.EqualTo("avatar-bytes"u8.ToArray()));
+			Assert.That(second!.Data, Is.EqualTo(first.Data));
+			Assert.That(handler.Requests, Has.Count.EqualTo(1), "the second read is served from the cache");
+			Assert.That(handler.Requests[0],
+				Is.EqualTo(new Uri("https://cdn.discordapp.com/avatars/u2/a1b2c3.png?size=128")));
+		});
+	}
+
+	[Test]
+	public async Task A_moved_on_icon_version_fetches_nothing()
+	{
+		var handler = new StubAvatarHandler();
+		using var connection = await ConnectAsync(BuildClientWithMembers(),
+			new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var content = await action.GetActionIconContentAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			"discord-avatar:u2:stale",
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(content, Is.Null);
+			Assert.That(handler.Requests, Is.Empty);
+		});
+	}
+
+	[Test]
+	public async Task An_unreachable_avatar_falls_back_to_the_widget_icon()
+	{
+		var handler = new StubAvatarHandler { Failure = new HttpRequestException("down") };
+		using var connection = await ConnectAsync(BuildClientWithMembers(),
+			new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		var content = await action.GetActionIconContentAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			"discord-avatar:u2:a1b2c3",
+			CancellationToken.None);
+
+		Assert.That(content, Is.Null);
+	}
+
+	[Test]
+	public async Task The_mute_user_action_reports_the_members_mute_state()
+	{
+		using var connection = await ConnectAsync(BuildClientWithMembers());
+		var provider = (IStateProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "mute-user");
+
+		var muted = await provider.GetActionStateAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u3" },
+			CancellationToken.None);
+		var live = await provider.GetActionStateAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(muted!.States.Select(s => s.Id), Is.EqualTo(["unmuted", "muted", "unavailable"]));
+			Assert.That(muted.ActiveStateId, Is.EqualTo("muted"));
+			Assert.That(live!.ActiveStateId, Is.EqualTo("unmuted"));
+		});
+	}
+
+	[Test]
+	public async Task The_mute_user_state_is_unavailable_without_a_known_member()
+	{
+		using var connection = await ConnectAsync(BuildClientWithMembers());
+		var provider = (IStateProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "mute-user");
+
+		var ghost = await provider.GetActionStateAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "ghost" },
+			CancellationToken.None);
+
+		var unconfigured = (IStateProviderActionDefinition)DiscordActions
+			.Create(() => null, new StubWebhookClient())
+			.Single(a => a.Id == "mute-user");
+		var down = await unconfigured.GetActionStateAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(ghost!.ActiveStateId, Is.EqualTo("unavailable"));
+			Assert.That(down!.ActiveStateId, Is.EqualTo("unavailable"));
+		});
+	}
+
 	[Test]
 	public async Task A_configured_but_closed_discord_fails_the_action()
 	{
@@ -666,7 +845,7 @@ internal sealed class DiscordActionsTests
 				"""
 				{"id":"555","name":"General","guild_id":"999","voice_states":[
 					{"user":{"id":"me","username":"tester"},"nick":"tester","volume":100,"mute":false},
-					{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false},
+					{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"nick":"Friend","volume":80,"mute":false},
 					{"user":{"id":"u3","username":"lurker"},"volume":110,"mute":true}]}
 				""")
 			.Responds("GET_GUILDS", """{"guilds":[{"id":"999","name":"My Server"}]}""")
@@ -675,7 +854,9 @@ internal sealed class DiscordActionsTests
 		return client;
 	}
 
-	private static async Task<DiscordConnection> ConnectAsync(FakeDiscordRpcClient client)
+	private static async Task<DiscordConnection> ConnectAsync(
+		FakeDiscordRpcClient client,
+		DiscordAvatarCache? avatars = null)
 	{
 		var connection = new DiscordConnection(() => client,
 			new FakeDiscordOAuthClient(),
@@ -684,7 +865,8 @@ internal sealed class DiscordActionsTests
 			new DiscordTokens("stored-access", "stored-refresh", null, "rpc rpc.voice.read rpc.voice.write"),
 			(_, _) => Task.CompletedTask,
 			null,
-			TimeSpan.FromMinutes(5));
+			TimeSpan.FromMinutes(5),
+			avatars);
 
 		connection.Start();
 		for (var attempt = 0; attempt < 300 && !connection.State.IsConnected; attempt++)
@@ -694,6 +876,32 @@ internal sealed class DiscordActionsTests
 
 		Assert.That(connection.State.IsConnected, Is.True, "the fake connection did not come up in time");
 		return connection;
+	}
+
+	private sealed class StubAvatarHandler : HttpMessageHandler
+	{
+		public List<Uri?> Requests { get; } = [];
+
+		public byte[] Response { get; set; } = "avatar-bytes"u8.ToArray();
+
+		public Exception? Failure { get; set; }
+
+		protected override Task<HttpResponseMessage> SendAsync(
+			HttpRequestMessage request,
+			CancellationToken cancellationToken)
+		{
+			Requests.Add(request.RequestUri);
+
+			if (Failure is not null)
+			{
+				return Task.FromException<HttpResponseMessage>(Failure);
+			}
+
+			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new ByteArrayContent(Response)
+			});
+		}
 	}
 
 	private sealed class StubWebhookClient : IDiscordWebhookClient

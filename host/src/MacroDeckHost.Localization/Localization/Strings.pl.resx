@@ -19712,9 +19712,6 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>Stan z {integration}: {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Użyj dostarczonej ikony</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Użyj wybranych</value>
   </data>
@@ -19738,6 +19735,9 @@ Pobierz go ze strony Macro Deck i zaktualizuj zainstalowany pakiet AppImage, DEB
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Włącz wiele stanów</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Użyj dostarczonej ikony</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Użyj dostarczonych stanów</value>

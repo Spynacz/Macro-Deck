@@ -19710,9 +19710,6 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   <data name="Widgets.Editor.StateProvidedBy" xml:space="preserve">
     <value>Status von {integration}: {action}</value>
   </data>
-  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
-    <value>Bereitgestelltes Symbol verwenden</value>
-  </data>
   <data name="Widgets.Editor.UseSelectedProvidersConfirm" xml:space="preserve">
     <value>Auswahl verwenden</value>
   </data>
@@ -19736,6 +19733,9 @@ Lade es von der Macro-Deck-Website herunter und aktualisiere deine installierte 
   </data>
   <data name="Widgets.Editor.TurnOnMultiStateConfirm" xml:space="preserve">
     <value>Multi-Status aktivieren</value>
+  </data>
+  <data name="Widgets.Editor.UseProvidedIconConfirm" xml:space="preserve">
+    <value>Bereitgestelltes Symbol verwenden</value>
   </data>
   <data name="Widgets.Editor.UseProvidedStatesConfirm" xml:space="preserve">
     <value>Bereitgestellte Status verwenden</value>

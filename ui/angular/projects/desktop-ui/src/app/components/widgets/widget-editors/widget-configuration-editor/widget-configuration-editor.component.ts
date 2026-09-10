@@ -34,9 +34,13 @@ import {
   widgetTileBorder,
   WIDGET_REFERENCE_CELL_SIZE,
   WIDGET_REFERENCE_GAP,
+  type ActionBlock,
+  type ActionButtonData,
+  type ActionFlow,
 } from '@macro-deck/runtime';
 import {
   ButtonComponent,
+  ApiService,
   IWidgetEditorComponent,
   TranslatePipe,
   UiNodeEventBus,
@@ -46,6 +50,7 @@ import {
   WidgetBorderOverlayComponent,
   WidgetTypeCatalogService,
 } from '@shared';
+import { WidgetIconProviderService } from '../../../../services/widget-icon-provider.service';
 import { UiNodeComponent } from '../../../ui-render/ui-node.component';
 import { UiRenderContext } from '../../../ui-render/ui-render-context';
 import { deepEqual } from '../../../../util/deep-equal';
@@ -120,6 +125,8 @@ export class WidgetConfigurationEditorComponent implements IWidgetEditorComponen
   private readonly widgetTypes = inject(WidgetTypeCatalogService);
   protected readonly context = inject(UiRenderContext);
   private readonly eventBus = inject(UiNodeEventBus);
+  private readonly iconProviders = inject(WidgetIconProviderService);
+  private readonly api = inject(ApiService);
 
   private readonly handle = signal<UiSessionHandle | null>(null);
 
@@ -143,6 +150,15 @@ export class WidgetConfigurationEditorComponent implements IWidgetEditorComponen
     () => findRegion(this.root(), UiConfigPrimitives.WidgetEditor));
 
   protected readonly previewData = signal<WidgetData>({} as WidgetData);
+
+  /** The draft's adopted icon provider painted over the preview, like the deck resolves it for the
+   * saved widget - the preview session renders configured faces only, so without this the panel keeps
+   * showing the default icon while the deck already shows the avatar. */
+  protected readonly providerIconUrl = signal<string | null>(null);
+
+  private providerIconSeq = 0;
+
+  private lastProviderIconKey: string | null = null;
 
   private readonly previewTree = viewChild(UiTreeWidgetComponent);
 
@@ -208,6 +224,14 @@ export class WidgetConfigurationEditorComponent implements IWidgetEditorComponen
 
     const subscription = this.eventBus.events$.subscribe(event => this.onNodeEvent(event));
     inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
+
+    effect(() => {
+      const target = this.providerIconTarget();
+      const key = target ? JSON.stringify(target) : null;
+      if (key === this.lastProviderIconKey) return;
+      this.lastProviderIconKey = key;
+      void this.loadProviderIcon(target);
+    });
   }
 
   ngOnInit(): void {
@@ -218,6 +242,7 @@ export class WidgetConfigurationEditorComponent implements IWidgetEditorComponen
 
   ngOnDestroy(): void {
     this.settleFollow();
+    this.clearProviderIconUrl();
     this.handle()?.close();
   }
 
@@ -370,6 +395,89 @@ export class WidgetConfigurationEditorComponent implements IWidgetEditorComponen
     this.treeDraft = structuredClone(this.widget.data);
     this.previewData.set({ ...data });
   }
+
+  private providerIconTarget(): ProviderIconTarget | null {
+    const data = this.previewData() as Partial<ActionButtonData>;
+    const provider = data.iconProvider;
+    if (!provider?.blockId || !Array.isArray(data.flows)) return null;
+
+    const block = findActionBlock(data.flows, provider.blockId);
+    if (!block || block.disabled) return null;
+
+    const integrationId = provider.integrationId ?? block.integrationId;
+    const actionId = provider.actionId ?? block.actionId;
+    if (!integrationId || !actionId) return null;
+
+    const parameters: Record<string, unknown> = {};
+    for (const param of block.parameters ?? []) parameters[param.name] = param.value;
+
+    return { blockId: provider.blockId, integrationId, actionId, parameters };
+  }
+
+  private async loadProviderIcon(target: ProviderIconTarget | null): Promise<void> {
+    const seq = ++this.providerIconSeq;
+    this.clearProviderIconUrl();
+    if (!target) return;
+
+    let snapshot;
+    try {
+      snapshot = await this.iconProviders.getIconPreview(target.blockId, {
+        integrationId: target.integrationId,
+        actionId: target.actionId,
+        parameters: target.parameters,
+      });
+    } catch {
+      // The preview keeps the configured icon; surfacing provider errors is the deck's job.
+      return;
+    }
+
+    if (this.providerIconSeq !== seq) return;
+    if (!snapshot?.hasSnapshot || snapshot.noIcon || snapshot.reference || !snapshot.version) return;
+
+    try {
+      const content = await this.api.getActionProviderIconContent({
+        integrationId: target.integrationId,
+        actionId: target.actionId,
+        parameters: target.parameters,
+        version: snapshot.version,
+      });
+      if (this.providerIconSeq !== seq) return;
+      this.providerIconUrl.set(URL.createObjectURL(content.blob));
+    } catch {
+      // Same as above: a preview that cannot load the image falls back to the configured icon.
+    }
+  }
+
+  private clearProviderIconUrl(): void {
+    const current = this.providerIconUrl();
+    this.providerIconUrl.set(null);
+    if (current) URL.revokeObjectURL(current);
+  }
+}
+
+interface ProviderIconTarget {
+  blockId: string;
+  integrationId: string;
+  actionId: string;
+  parameters: Record<string, unknown>;
+}
+
+function findActionBlock(flows: ActionFlow[] | undefined, blockId: string): ActionBlock | undefined {
+  const visit = (blocks: ActionBlock[] | undefined): ActionBlock | undefined => {
+    for (const block of blocks ?? []) {
+      if (block.id === blockId) return block;
+      const nested = visit(block.children)
+        ?? visit(block.branches?.flatMap(branch => branch.children ?? []));
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+
+  for (const flow of flows ?? []) {
+    const found = visit(flow.children);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function findRegion(root: UiNode | null, type: string): UiNode | null {

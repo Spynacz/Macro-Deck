@@ -226,7 +226,7 @@ internal sealed class DiscordStateMapperTests
 				 	"guild_id": "999",
 				 	"voice_states": [
 				 		{ "user": { "id": "me", "username": "tester" }, "nick": "Tester", "volume": 100, "mute": false },
-				 		{ "user": { "id": "u2", "username": "friend" }, "nick": "Friend", "volume": 80, "mute": false },
+				 		{ "user": { "id": "u2", "username": "friend", "avatar": "a1b2c3" }, "nick": "Friend", "volume": 80, "mute": false },
 				 		{ "user": { "id": "u3", "username": "lurker" }, "volume": 110, "mute": true }
 				 	]
 				 }
@@ -241,11 +241,13 @@ internal sealed class DiscordStateMapperTests
 
 			var friend = state.VoiceUsers.Single(u => u.UserId == "u2");
 			Assert.That(friend.Name, Is.EqualTo("Friend"));
+			Assert.That(friend.AvatarHash, Is.EqualTo("a1b2c3"));
 			Assert.That(friend.Volume, Is.EqualTo(80));
 			Assert.That(friend.Muted, Is.False);
 
 			var lurker = state.VoiceUsers.Single(u => u.UserId == "u3");
 			Assert.That(lurker.Name, Is.EqualTo("lurker"), "the username stands in for a missing nick");
+			Assert.That(lurker.AvatarHash, Is.Null);
 			Assert.That(lurker.Volume, Is.EqualTo(110));
 			Assert.That(lurker.Muted, Is.True);
 		});
