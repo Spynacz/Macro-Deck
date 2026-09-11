@@ -59,13 +59,17 @@ internal static class DiscordVoiceUserParameters
 
 	public static Task<DynamicOptionsResult> GetUserOptionsAsync(DiscordConnection? connection)
 	{
+		// Self is never offered: per-user volume does nothing for our own playback and self mute
+		// already exists as a global action, so listing ourselves would only invite a dead control.
 		IReadOnlyList<ActionParameterOption> options = connection is null
 			? []
-			: [.. connection.State.VoiceUsers.Select(u => new ActionParameterOption
-			{
-				Value = u.UserId,
-				Label = u.Name ?? u.UserId
-			})];
+			: [.. connection.State.VoiceUsers
+				.Where(u => !string.Equals(u.UserId, connection.State.UserId, StringComparison.Ordinal))
+				.Select(u => new ActionParameterOption
+				{
+					Value = u.UserId,
+					Label = u.Name ?? u.UserId
+				})];
 
 		return Task.FromResult(new DynamicOptionsResult
 		{
