@@ -549,11 +549,37 @@ internal sealed class DiscordActionsTests
 
 		Assert.Multiple(() =>
 		{
-			Assert.That(result.Options.Select(o => o.Value), Is.EquivalentTo(["me", "u2", "u3"]));
+			Assert.That(result.Options.Select(o => o.Value), Is.EquivalentTo(["u2", "u3"]));
 			Assert.That(TestLocalization.Resolve(result.Options.Single(o => o.Value == "u2").Label),
 				Is.EqualTo("Friend"));
 			Assert.That(result.AllowsCustomValue, Is.True, "a pasted user id must stay enterable");
 		});
+	}
+
+	[Test]
+	public async Task The_user_picker_leaves_out_our_own_user()
+	{
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client);
+		Assert.That(connection.State.VoiceUsers.Any(u => u.UserId == "me"),
+			Is.True,
+			"self is still tracked, just not offered");
+
+		foreach (var actionId in new[] { "set-user-volume", "mute-user" })
+		{
+			var action = (IDynamicOptionsActionDefinition)DiscordActions
+				.Create(() => connection, new StubWebhookClient())
+				.Single(a => a.Id == actionId);
+
+			var result = await action.GetDynamicOptionsAsync(new DynamicOptionsContext
+				{
+					ParameterName = "userId",
+					CurrentParameters = new Dictionary<string, object?>(StringComparer.Ordinal)
+				},
+				CancellationToken.None);
+
+			Assert.That(result.Options.Select(o => o.Value), Does.Not.Contain("me"), actionId);
+		}
 	}
 
 	[TestCase("set-user-volume")]
