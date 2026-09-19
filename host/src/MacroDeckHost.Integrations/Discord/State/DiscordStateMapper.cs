@@ -98,9 +98,11 @@ internal static class DiscordStateMapper
 			return state.WithoutVoiceChannel();
 		}
 
+		var channelId = ReadString(data, "id") ?? state.VoiceChannelId;
+
 		var updated = state with
 		{
-			VoiceChannelId = ReadString(data, "id") ?? state.VoiceChannelId,
+			VoiceChannelId = channelId,
 			VoiceChannelName = ReadString(data, "name") ?? state.VoiceChannelName,
 			VoiceGuildId = ReadString(data, "guild_id") ?? state.VoiceGuildId,
 			VoiceGuildName = guildName ?? state.VoiceGuildName,
@@ -219,12 +221,14 @@ internal static class DiscordStateMapper
 			Muted = muted ?? existing?.Muted ?? false
 		};
 
-		if (index >= 0)
-		{
-			return state with { VoiceUsers = [.. users.Take(index), merged, .. users.Skip(index + 1)] };
-		}
+		var updated = index >= 0
+			? state with { VoiceUsers = [.. users.Take(index), merged, .. users.Skip(index + 1)] }
+			: state with { VoiceUsers = [.. users, merged] };
 
-		return state with { VoiceUsers = [.. users, merged] };
+		// The avatar outlives the voice state: a member who leaves keeps their dimmed face.
+		return merged.AvatarHash is null
+			? updated
+			: updated with { KnownAvatars = updated.KnownAvatars.SetItem(userId, merged.AvatarHash) };
 	}
 
 	internal static bool? ReadBool(JsonElement element, string property)

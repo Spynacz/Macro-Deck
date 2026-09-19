@@ -30,7 +30,17 @@ internal static class DiscordVoiceUserParameters
 		DiscordConnection? connection,
 		IReadOnlyDictionary<string, object?> parameters)
 	{
-		var version = DiscordAvatarCache.VersionFor(FindConfiguredUser(connection, parameters));
+		var userId = ReadUserId(parameters.GetValueOrDefault(UserParameter));
+		if (connection is null || userId is null)
+		{
+			return null;
+		}
+
+		var version = DiscordAvatarCache.VersionFor(FindUser(connection.State, userId))
+			?? (connection.State.KnownAvatars.TryGetValue(userId, out var hash)
+				? DiscordAvatarCache.DimmedVersion(userId, hash)
+				: null);
+
 		return version is null
 			? null
 			: new ActionIconSnapshot { Version = version, MediaType = DiscordAvatarCache.MediaType };
@@ -42,19 +52,36 @@ internal static class DiscordVoiceUserParameters
 		string version,
 		CancellationToken cancellationToken)
 	{
-		var member = FindConfiguredUser(connection, parameters);
-		if (member?.AvatarHash is not { } hash ||
-			!string.Equals(DiscordAvatarCache.Version(member.UserId, hash), version, StringComparison.Ordinal))
+		var userId = ReadUserId(parameters.GetValueOrDefault(UserParameter));
+		if (connection is null || userId is null)
 		{
 			return null;
 		}
 
-		var bytes = await connection!
-			.Avatars
-			.GetAvatarAsync(member.UserId, hash, cancellationToken)
-			.ConfigureAwait(false);
+		var member = FindUser(connection.State, userId);
+		if (member?.AvatarHash is { } hash &&
+			string.Equals(DiscordAvatarCache.Version(userId, hash), version, StringComparison.Ordinal))
+		{
+			var bytes = await connection
+				.Avatars
+				.GetAvatarAsync(userId, hash, cancellationToken)
+				.ConfigureAwait(false);
 
-		return bytes is null ? null : new ActionIconContent(bytes, DiscordAvatarCache.MediaType);
+			return bytes is null ? null : new ActionIconContent(bytes, DiscordAvatarCache.MediaType);
+		}
+
+		if (connection.State.KnownAvatars.TryGetValue(userId, out var known) &&
+			string.Equals(DiscordAvatarCache.DimmedVersion(userId, known), version, StringComparison.Ordinal))
+		{
+			var dimmed = await connection
+				.Avatars
+				.GetDimmedAvatarAsync(userId, known, cancellationToken)
+				.ConfigureAwait(false);
+
+			return dimmed is null ? null : new ActionIconContent(dimmed, DiscordAvatarCache.MediaType);
+		}
+
+		return null;
 	}
 
 	public static Task<DynamicOptionsResult> GetUserOptionsAsync(DiscordConnection? connection)

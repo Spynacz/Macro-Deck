@@ -243,11 +243,18 @@ public sealed class DiscordIntegration
 		IsInitialized = true;
 	}
 
-	public Task ShutdownAsync()
+	public async Task ShutdownAsync()
 	{
-		_connection?.Dispose();
+		var connection = _connection;
 		_connection = null;
-		return Task.CompletedTask;
+
+		if (connection is null)
+		{
+			return;
+		}
+
+		await PersistAvatarsAsync(connection.State.KnownAvatars, CancellationToken.None).ConfigureAwait(false);
+		connection.Dispose();
 	}
 
 	public void Dispose()
@@ -634,7 +641,10 @@ public sealed class DiscordIntegration
 			new DiscordTokens(accessToken, refreshToken, expiresAt, scope),
 			PersistTokensAsync,
 			_events,
-			onStateChanged: RequestChangedVariablesRefresh);
+			onStateChanged: RequestChangedVariablesRefresh,
+			persistAvatars: PersistAvatarsAsync,
+			knownAvatars: DiscordAvatarStore.Parse(
+				await context.Config.GetStringAsync(entry.Id, DiscordConfigKeys.Avatars).ConfigureAwait(false)));
 		_connection.Start();
 	}
 
@@ -705,6 +715,34 @@ public sealed class DiscordIntegration
 			// The refreshed tokens stay usable in memory; a storage problem (e.g. the entry was deleted
 			// mid-refresh) must not take the connection's work loop down with it.
 			_logger.Warning(ex, "Failed to persist refreshed Discord tokens");
+		}
+	}
+
+	private async Task PersistAvatarsAsync(
+		IReadOnlyDictionary<string, string> avatars,
+		CancellationToken cancellationToken)
+	{
+		var context = _context;
+		var entryId = _entryId;
+		if (context is null || entryId is null)
+		{
+			return;
+		}
+
+		try
+		{
+			await context.Config
+				.SetStringAsync(entryId.Value,
+					DiscordConfigKeys.Avatars,
+					DiscordAvatarStore.Serialize(avatars),
+					cancellationToken)
+				.ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			// A storage problem must not take the connection's work loop down with it; the avatars
+			// stay usable in memory and the next change retries the write.
+			_logger.Warning(ex, "Failed to persist Discord avatars");
 		}
 	}
 }

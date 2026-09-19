@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -29,6 +30,7 @@ internal sealed class DiscordConnection : IDisposable
 	private readonly Func<IDiscordRpcClient> _clientFactory;
 	private readonly IDiscordOAuthClient _oauth;
 	private readonly Func<DiscordTokens, CancellationToken, Task> _persistTokens;
+	private readonly Func<IReadOnlyDictionary<string, string>, CancellationToken, Task>? _persistAvatars;
 	private readonly DiscordEventEmitter? _events;
 	private readonly Action<DiscordState, DiscordState>? _onStateChanged;
 	private readonly TimeSpan _reconnectDelay;
@@ -49,6 +51,7 @@ internal sealed class DiscordConnection : IDisposable
 	private DiscordTokens _tokens;
 	private IDiscordRpcClient? _client;
 	private DiscordState _state = DiscordState.Disconnected;
+	private ImmutableDictionary<string, string> _persistedAvatars = ImmutableDictionary<string, string>.Empty;
 	private string? _subscribedVoiceChannelId;
 	private IReadOnlyList<string> _grantedScopes = [];
 	private int _consecutiveFailures;
@@ -64,7 +67,9 @@ internal sealed class DiscordConnection : IDisposable
 		DiscordEventEmitter? events = null,
 		TimeSpan? reconnectDelay = null,
 		Action<DiscordState, DiscordState>? onStateChanged = null,
-		DiscordAvatarCache? avatarCache = null)
+		DiscordAvatarCache? avatarCache = null,
+		Func<IReadOnlyDictionary<string, string>, CancellationToken, Task>? persistAvatars = null,
+		IReadOnlyDictionary<string, string>? knownAvatars = null)
 	{
 		_clientFactory = clientFactory;
 		_oauth = oauth;
@@ -72,10 +77,17 @@ internal sealed class DiscordConnection : IDisposable
 		_clientSecret = clientSecret;
 		_tokens = tokens;
 		_persistTokens = persistTokens;
+		_persistAvatars = persistAvatars;
 		_events = events;
 		_reconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(10);
 		_onStateChanged = onStateChanged;
 		Avatars = avatarCache ?? new DiscordAvatarCache();
+
+		if (knownAvatars is { Count: > 0 })
+		{
+			_state = DiscordState.Disconnected with { KnownAvatars = knownAvatars.ToImmutableDictionary() };
+			_persistedAvatars = _state.KnownAvatars;
+		}
 	}
 
 	public DiscordState State
@@ -531,6 +543,7 @@ internal sealed class DiscordConnection : IDisposable
 			await ResubscribeVoiceChannelAsync(client, null, cancellationToken).ConfigureAwait(false);
 
 			UpdateState(state => state with { IsConnected = true });
+			MaybePersistAvatars();
 
 			_consecutiveFailures = 0;
 			RecordDenial(null);
@@ -752,6 +765,7 @@ internal sealed class DiscordConnection : IDisposable
 			case DiscordRpcEvents.VoiceStateCreate:
 			case DiscordRpcEvents.VoiceStateUpdate:
 				UpdateState(state => DiscordStateMapper.ApplyVoiceState(state, e.Data));
+				MaybePersistAvatars();
 				break;
 
 			case DiscordRpcEvents.VoiceStateDelete:
@@ -808,6 +822,7 @@ internal sealed class DiscordConnection : IDisposable
 		}
 
 		await ResubscribeVoiceChannelAsync(client, channelId, cancellationToken).ConfigureAwait(false);
+		MaybePersistAvatars();
 	}
 
 	private void HandleSpeaking(JsonElement data, bool speaking)
@@ -834,7 +849,7 @@ internal sealed class DiscordConnection : IDisposable
 			return;
 		}
 
-		UpdateState(_ => DiscordState.Disconnected);
+		UpdateState(previous => DiscordState.Disconnected with { KnownAvatars = previous.KnownAvatars });
 		_events?.Reset();
 		_subscribedVoiceChannelId = null;
 		_ignoredVoiceSettings.Clear();
@@ -901,6 +916,25 @@ internal sealed class DiscordConnection : IDisposable
 		}
 
 		_onStateChanged?.Invoke(previous, updated);
+	}
+
+	private void MaybePersistAvatars()
+	{
+		var persist = _persistAvatars;
+		if (persist is null)
+		{
+			return;
+		}
+
+		var current = State.KnownAvatars;
+		if (current.Count == _persistedAvatars.Count &&
+			current.All(entry => _persistedAvatars.TryGetValue(entry.Key, out var hash) && hash == entry.Value))
+		{
+			return;
+		}
+
+		_persistedAvatars = current;
+		Enqueue(ct => persist(current, ct));
 	}
 
 	private sealed record AuthenticateArgs

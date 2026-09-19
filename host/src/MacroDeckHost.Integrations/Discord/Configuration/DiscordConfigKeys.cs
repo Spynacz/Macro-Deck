@@ -9,4 +9,5 @@ internal static class DiscordConfigKeys
 	public const string ExpiresAt = "expiresAt";
 	public const string Scope = "scope";
 	public const string UserName = "userName";
+	public const string Avatars = "avatars";
 }
