@@ -6,6 +6,9 @@ using MacroDeckHost.Integrations.Discord.Rpc;
 using MacroDeckHost.Integrations.Discord.Webhooks;
 using MacroDeckHost.Tests.UnitTests.TestSupport;
 using MacroDeck.Sdk.Actions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace MacroDeckHost.Tests.UnitTests.Discord;
 
@@ -693,6 +696,107 @@ internal sealed class DiscordActionsTests
 	}
 
 	[Test]
+	public async Task A_left_member_keeps_a_dimmed_avatar()
+	{
+		var handler = new StubAvatarHandler { Response = RedAvatarPng() };
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client, new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+		var parameters = new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" };
+
+		client.RaiseEvent("VOICE_STATE_DELETE", """{"user":{"id":"u2","username":"friend"}}""");
+
+		var snapshot = await action.GetActionIconAsync(parameters, CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(snapshot, Is.Not.Null);
+			Assert.That(snapshot!.Version, Is.EqualTo("discord-avatar:u2:a1b2c3:dimmed"));
+			Assert.That(snapshot.MediaType, Is.EqualTo("image/png"));
+		});
+
+		var first = await action.GetActionIconContentAsync(parameters,
+			"discord-avatar:u2:a1b2c3:dimmed",
+			CancellationToken.None);
+		var second = await action.GetActionIconContentAsync(parameters,
+			"discord-avatar:u2:a1b2c3:dimmed",
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(first, Is.Not.Null);
+			Assert.That(first!.MediaType, Is.EqualTo("image/png"));
+			Assert.That(handler.Requests, Has.Count.EqualTo(1), "the second read is served from the cache");
+		});
+
+		using var decoded = Image.Load<Rgba32>(first.Data);
+		var pixel = decoded[0, 0];
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(pixel.R, Is.LessThan(200), "the face is dimmed, not the full-bright avatar");
+			Assert.That(pixel.R, Is.GreaterThan(0));
+			Assert.That(pixel.G, Is.EqualTo(0));
+			Assert.That(pixel.B, Is.EqualTo(0));
+		});
+
+		client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"volume":80,"mute":false}""");
+
+		var back = await action.GetActionIconAsync(parameters, CancellationToken.None);
+
+		Assert.That(back!.Version,
+			Is.EqualTo("discord-avatar:u2:a1b2c3"),
+			"rejoining restores the full-bright face");
+	}
+
+	[Test]
+	public async Task A_stale_dimmed_version_fetches_nothing()
+	{
+		var handler = new StubAvatarHandler { Response = RedAvatarPng() };
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client, new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		client.RaiseEvent("VOICE_STATE_DELETE", """{"user":{"id":"u2","username":"friend"}}""");
+
+		var content = await action.GetActionIconContentAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			"discord-avatar:u2:stale:dimmed",
+			CancellationToken.None);
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(content, Is.Null);
+			Assert.That(handler.Requests, Is.Empty);
+		});
+	}
+
+	[Test]
+	public async Task An_undecodable_avatar_reports_no_bytes()
+	{
+		var handler = new StubAvatarHandler { Response = "not-an-image"u8.ToArray() };
+		var client = BuildClientWithMembers();
+		using var connection = await ConnectAsync(client, new DiscordAvatarCache(new HttpClient(handler)));
+		var action = (IIconProviderActionDefinition)DiscordActions
+			.Create(() => connection, new StubWebhookClient())
+			.Single(a => a.Id == "set-user-volume");
+
+		client.RaiseEvent("VOICE_STATE_DELETE", """{"user":{"id":"u2","username":"friend"}}""");
+
+		var content = await action.GetActionIconContentAsync(
+			new Dictionary<string, object?>(StringComparer.Ordinal) { ["userId"] = "u2" },
+			"discord-avatar:u2:a1b2c3:dimmed",
+			CancellationToken.None);
+
+		Assert.That(content, Is.Null);
+	}
+
+	[Test]
 	public async Task An_unreachable_avatar_falls_back_to_the_widget_icon()
 	{
 		var handler = new StubAvatarHandler { Failure = new HttpRequestException("down") };
@@ -902,6 +1006,15 @@ internal sealed class DiscordActionsTests
 
 		Assert.That(connection.State.IsConnected, Is.True, "the fake connection did not come up in time");
 		return connection;
+	}
+
+	private static byte[] RedAvatarPng()
+	{
+		using var image = new Image<Rgba32>(4, 4);
+		image.Mutate(ctx => ctx.BackgroundColor(Color.Red));
+		using var stream = new MemoryStream();
+		image.SaveAsPng(stream);
+		return stream.ToArray();
 	}
 
 	private sealed class StubAvatarHandler : HttpMessageHandler

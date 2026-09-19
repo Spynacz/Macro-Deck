@@ -368,6 +368,67 @@ internal sealed class DiscordStateMapperTests
 	}
 
 	[Test]
+	public void A_seen_avatar_outlives_the_voice_state()
+	{
+		var tracked = DiscordStateMapper.ApplyVoiceState(_connected,
+			Json("""{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"volume":80,"mute":false}"""));
+
+		Assert.That(tracked.KnownAvatars.GetValueOrDefault("u2"), Is.EqualTo("a1b2c3"));
+
+		var deleted = DiscordStateMapper.ApplyVoiceStateDelete(tracked, Json("""{"user":{"id":"u2"}}"""));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(deleted.VoiceUsers, Is.Empty);
+			Assert.That(deleted.KnownAvatars.GetValueOrDefault("u2"),
+				Is.EqualTo("a1b2c3"),
+				"the dimmed face needs the hash after the member is gone");
+		});
+
+		var renewed = DiscordStateMapper.ApplyVoiceState(deleted,
+			Json("""{"user":{"id":"u2","username":"friend","avatar":"d4e5f6"},"volume":80,"mute":false}"""));
+
+		Assert.That(renewed.KnownAvatars.GetValueOrDefault("u2"), Is.EqualTo("d4e5f6"));
+	}
+
+	[Test]
+	public void Leaving_a_channel_keeps_known_avatars()
+	{
+		var tracked = DiscordStateMapper.ApplyVoiceState(_connected,
+			Json("""{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"volume":80,"mute":false}"""));
+
+		var state = tracked.WithoutVoiceChannel();
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(state.VoiceUsers, Is.Empty);
+			Assert.That(state.KnownAvatars.GetValueOrDefault("u2"),
+				Is.EqualTo("a1b2c3"),
+				"an assigned button keeps its dimmed face while out of channel");
+		});
+	}
+
+	[Test]
+	public void Switching_channels_keeps_known_avatars()
+	{
+		var tracked = DiscordStateMapper.ApplySelectedVoiceChannel(_connected,
+			Json("""
+				 {"id":"555","name":"General","guild_id":"999","voice_states":[
+				 	{ "user": { "id": "u2", "username": "friend", "avatar": "a1b2c3" }, "volume": 80, "mute": false }
+				 ]}
+				 """));
+
+		var switched = DiscordStateMapper.ApplySelectedVoiceChannel(tracked,
+			Json("""{"id":"777","name":"Gaming","guild_id":"999","voice_states":[]}"""));
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(switched.VoiceUsers, Is.Empty);
+			Assert.That(switched.KnownAvatars.GetValueOrDefault("u2"), Is.EqualTo("a1b2c3"));
+		});
+	}
+
+	[Test]
 	public void The_user_is_read_from_a_ready_or_authenticate_payload()
 	{
 		var (id, name) = DiscordStateMapper.ReadUser(

@@ -499,6 +499,74 @@ internal sealed class DiscordIntegrationTests
 	}
 
 	[Test]
+	public async Task Shutdown_persists_known_avatars()
+	{
+		using var integration = await ConnectedIntegrationAsync();
+		var context = new FakeDiscordIntegrationContext();
+		var entryId = context.ConfigStore.AddEntry("Discord", new Dictionary<string, string?>());
+		SetPrivate(integration, "_context", context);
+		SetPrivate(integration, "_entryId", entryId);
+
+		await integration.ShutdownAsync();
+
+		var stored = await context.Config.GetStringAsync(entryId, "avatars");
+		Assert.That(DiscordAvatarStore.Parse(stored),
+			Is.EquivalentTo(new Dictionary<string, string> { ["u2"] = "a1b2c3" }));
+	}
+
+	[Test]
+	public async Task Stored_avatars_seed_the_connection()
+	{
+		var context = new FakeDiscordIntegrationContext();
+		context.ConfigStore.AddEntry("Discord",
+			new Dictionary<string, string?>
+			{
+				["clientId"] = "123456",
+				["avatars"] = """{"u9":"hash9"}""",
+			},
+			new Dictionary<string, string>
+			{
+				["clientSecret"] = "secret",
+				["accessToken"] = "stored-access",
+			});
+
+		using var integration = new DiscordIntegration();
+		await integration.InitializeAsync(context);
+
+		var connection = GetConnection(integration);
+
+		Assert.That(connection?.State.KnownAvatars.GetValueOrDefault("u9"), Is.EqualTo("hash9"));
+
+		await integration.ShutdownAsync();
+	}
+
+	[Test]
+	public async Task A_corrupt_avatar_store_still_connects_with_no_avatars()
+	{
+		var context = new FakeDiscordIntegrationContext();
+		context.ConfigStore.AddEntry("Discord",
+			new Dictionary<string, string?>
+			{
+				["clientId"] = "123456",
+				["avatars"] = "not-json{{{",
+			},
+			new Dictionary<string, string>
+			{
+				["clientSecret"] = "secret",
+				["accessToken"] = "stored-access",
+			});
+
+		using var integration = new DiscordIntegration();
+		await integration.InitializeAsync(context);
+
+		var connection = GetConnection(integration);
+
+		Assert.That(connection?.State.KnownAvatars, Is.Empty);
+
+		await integration.ShutdownAsync();
+	}
+
+	[Test]
 	public void The_brand_icon_is_embedded_as_svg()
 	{
 		var integration = new DiscordIntegration();
@@ -528,8 +596,16 @@ internal sealed class DiscordIntegrationTests
 	}
 
 	private static void InjectConnection(DiscordIntegration integration, DiscordConnection connection)
-		=> typeof(DiscordIntegration).GetField("_connection", BindingFlags.NonPublic | BindingFlags.Instance)!
-			.SetValue(integration, connection);
+		=> SetPrivate(integration, "_connection", connection);
+
+	private static void SetPrivate(DiscordIntegration integration, string field, object? value)
+		=> typeof(DiscordIntegration).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance)!
+			.SetValue(integration, value);
+
+	private static DiscordConnection? GetConnection(DiscordIntegration integration)
+		=> (DiscordConnection?)typeof(DiscordIntegration)
+			.GetField("_connection", BindingFlags.NonPublic | BindingFlags.Instance)!
+			.GetValue(integration);
 
 	private static FakeDiscordRpcClient MemberClient() => new FakeDiscordRpcClient()
 		.Responds("AUTHENTICATE",
@@ -539,8 +615,8 @@ internal sealed class DiscordIntegrationTests
 			"""
 			{"id":"555","name":"General","guild_id":"999","voice_states":[
 				{"user":{"id":"me","username":"tester"},"nick":"tester","volume":100,"mute":false},
-				{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false},
-				{"user":{"id":"u3","username":"lurker"},"volume":110,"mute":true}]}
+					{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"nick":"Friend","volume":80,"mute":false},
+					{"user":{"id":"u3","username":"lurker"},"volume":110,"mute":true}]}
 			""")
 		.Responds("GET_GUILDS", """{"guilds":[{"id":"999","name":"My Server"}]}""")
 		.RespondsWithEcho("SET_USER_VOICE_SETTINGS");

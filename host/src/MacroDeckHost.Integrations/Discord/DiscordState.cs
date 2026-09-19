@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace MacroDeckHost.Integrations.Discord;
 
 internal sealed record DiscordVoiceUser
@@ -66,6 +68,12 @@ internal sealed record DiscordState
 	public bool SelfSpeaking { get; init; }
 
 	public IReadOnlyList<DiscordVoiceUser> VoiceUsers { get; init; } = [];
+
+	// Every avatar hash ever seen, upserted on sight and never cleared: a button bound to a user
+	// keeps showing their dimmed face even when neither of them is in the channel any more.
+	public ImmutableDictionary<string, string> KnownAvatars { get; init; } =
+		ImmutableDictionary<string, string>.Empty;
+
 	public DiscordState WithoutVoiceChannel()
 	{
 		return this with

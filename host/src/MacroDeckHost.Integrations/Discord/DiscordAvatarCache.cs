@@ -1,10 +1,14 @@
 using System.Collections.Concurrent;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace MacroDeckHost.Integrations.Discord;
 
 internal sealed class DiscordAvatarCache
 {
 	public const string MediaType = "image/png";
+
+	private const float DimBrightness = 0.4f;
 
 	private static readonly HttpClient _shared = new() { Timeout = TimeSpan.FromSeconds(10) };
 
@@ -18,6 +22,9 @@ internal sealed class DiscordAvatarCache
 
 	public static string Version(string userId, string avatarHash)
 		=> $"discord-avatar:{userId}:{avatarHash}";
+
+	public static string DimmedVersion(string userId, string avatarHash)
+		=> $"{Version(userId, avatarHash)}:dimmed";
 
 	public static string Url(string userId, string avatarHash)
 		=> $"https://cdn.discordapp.com/avatars/{userId}/{avatarHash}.png?size=128";
@@ -49,5 +56,42 @@ internal sealed class DiscordAvatarCache
 		}
 
 		return downloaded.Length == 0 ? null : _bytes.GetOrAdd(version, downloaded);
+	}
+
+	public async Task<byte[]?> GetDimmedAvatarAsync(
+		string userId,
+		string avatarHash,
+		CancellationToken cancellationToken)
+	{
+		var version = DimmedVersion(userId, avatarHash);
+		if (_bytes.TryGetValue(version, out var cached))
+		{
+			return cached;
+		}
+
+		var plain = await GetAvatarAsync(userId, avatarHash, cancellationToken).ConfigureAwait(false);
+		if (plain is null)
+		{
+			return null;
+		}
+
+		var dimmed = DimAvatar(plain);
+		return dimmed is null ? null : _bytes.GetOrAdd(version, dimmed);
+	}
+
+	private static byte[]? DimAvatar(byte[] png)
+	{
+		try
+		{
+			using var image = Image.Load(png);
+			image.Mutate(ctx => ctx.Brightness(DimBrightness));
+			using var stream = new MemoryStream();
+			image.SaveAsPng(stream);
+			return stream.ToArray();
+		}
+		catch (Exception ex) when (ex is InvalidImageContentException or UnknownImageFormatException)
+		{
+			return null;
+		}
 	}
 }
