@@ -74,14 +74,6 @@ internal static class DiscordActions
 			new SetUserVolumeActionDefinition(resolver),
 			new MuteUserActionDefinition(resolver),
 
-			new SelectChannelActionDefinition(resolver, voice: true),
-			new DiscordAction("leave-voice-channel",
-				AppStrings.Integrations.Discord.Actions.LeaveVoiceChannel.Name(),
-				AppStrings.Integrations.Discord.Actions.LeaveVoiceChannel.Description(),
-				resolver,
-				(connection, ct) => connection.LeaveVoiceChannelAsync(ct)),
-			new SelectChannelActionDefinition(resolver, voice: false),
-
 			new SetRichPresenceActionDefinition(resolver),
 			new DiscordAction("clear-rich-presence",
 				AppStrings.Integrations.Discord.Actions.ClearRichPresence.Name(),
