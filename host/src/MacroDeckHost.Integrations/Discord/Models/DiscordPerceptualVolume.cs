@@ -1,4 +1,4 @@
-namespace MacroDeckHost.Integrations.Discord;
+namespace MacroDeckHost.Integrations.Discord.Models;
 
 internal static class DiscordPerceptualVolume
 {

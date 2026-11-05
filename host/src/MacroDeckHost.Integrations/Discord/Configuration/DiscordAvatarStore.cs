@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace MacroDeckHost.Integrations.Discord;
+namespace MacroDeckHost.Integrations.Discord.Configuration;
 
 internal static class DiscordAvatarStore
 {

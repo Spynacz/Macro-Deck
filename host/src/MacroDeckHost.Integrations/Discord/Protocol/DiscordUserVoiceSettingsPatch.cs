@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace MacroDeckHost.Integrations.Discord.Rpc;
+namespace MacroDeckHost.Integrations.Discord.Protocol;
 
 internal sealed record DiscordUserVoiceSettingsPatch
 {

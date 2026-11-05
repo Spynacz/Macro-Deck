@@ -4,6 +4,7 @@ using MacroDeckHost.Integrations.Discord;
 using MacroDeckHost.Integrations.Discord.Actions;
 using MacroDeckHost.Integrations.Discord.Auth;
 using MacroDeckHost.Integrations.Discord.Connections;
+using MacroDeckHost.Integrations.Discord.Models;
 using MacroDeckHost.Integrations.Discord.Protocol;
 using MacroDeckHost.Tests.UnitTests.TestSupport;
 using MacroDeck.Sdk.Actions;
@@ -997,6 +998,7 @@ internal sealed class DiscordActionsTests
 			(_, _) => Task.CompletedTask,
 			null,
 			TimeSpan.FromMinutes(5),
+			null,
 			avatars);
 
 		connection.Start();

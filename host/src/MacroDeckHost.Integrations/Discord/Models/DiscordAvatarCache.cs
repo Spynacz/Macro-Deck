@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
+using MacroDeckHost.Integrations.Discord.State;
 
-namespace MacroDeckHost.Integrations.Discord;
+namespace MacroDeckHost.Integrations.Discord.Models;
 
 internal sealed class DiscordAvatarCache
 {

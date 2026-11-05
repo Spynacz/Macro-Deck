@@ -1,4 +1,4 @@
-namespace MacroDeckHost.Integrations.Discord.Rpc;
+namespace MacroDeckHost.Integrations.Discord.Protocol;
 
 internal enum DiscordUserVoiceSettingsOutcome
 {

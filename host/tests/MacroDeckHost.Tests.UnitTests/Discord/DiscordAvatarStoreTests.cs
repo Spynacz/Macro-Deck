@@ -1,4 +1,5 @@
 using MacroDeckHost.Integrations.Discord;
+using MacroDeckHost.Integrations.Discord.Configuration;
 
 namespace MacroDeckHost.Tests.UnitTests.Discord;
 

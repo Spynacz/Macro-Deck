@@ -3,6 +3,7 @@ using MacroDeckHost.Application.Variables;
 using MacroDeckHost.Infrastructure.SystemIntegrations;
 using MacroDeckHost.Infrastructure.Variables;
 using MacroDeckHost.Integrations.Discord;
+using MacroDeckHost.Integrations.Discord.Auth;
 using MacroDeckHost.Integrations.Discord.Configuration;
 using MacroDeckHost.Integrations.Discord.Connections;
 using MacroDeckHost.Integrations.Discord.Events;

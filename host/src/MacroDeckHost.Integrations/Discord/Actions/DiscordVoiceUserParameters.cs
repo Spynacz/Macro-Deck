@@ -1,4 +1,7 @@
 using MacroDeck.Sdk.Actions;
+using MacroDeckHost.Integrations.Discord.Connections;
+using MacroDeckHost.Integrations.Discord.Models;
+using MacroDeckHost.Integrations.Discord.State;
 using MacroDeckHost.Localization;
 
 namespace MacroDeckHost.Integrations.Discord.Actions;
