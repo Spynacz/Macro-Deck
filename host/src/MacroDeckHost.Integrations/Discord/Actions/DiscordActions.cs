@@ -71,6 +71,8 @@ internal static class DiscordActions
 				resolver,
 				(connection, ct) => connection.LeaveVoiceChannelAsync(ct)),
 			new SelectChannelActionDefinition(resolver, false),
+			new SetUserVolumeActionDefinition(resolver),
+			new MuteUserActionDefinition(resolver),
 
 			new SetRichPresenceActionDefinition(resolver),
 			new DiscordAction("clear-rich-presence",

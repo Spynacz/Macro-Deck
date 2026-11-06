@@ -688,6 +688,7 @@ export {
   type GetActionButtonStateOptionsResponse,
   type GetActionParameterOptionsRequest,
   type GetActionParameterOptionsResponse,
+  type GetActionProviderIconContentRequest,
   type GetActionProviderIconRequest,
   type GetActionProviderIconResponse,
   type GetActionsRequest,

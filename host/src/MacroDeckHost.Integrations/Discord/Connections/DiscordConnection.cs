@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -29,6 +30,7 @@ internal sealed class DiscordConnection : IDisposable
 	private readonly Func<IDiscordRpcClient> _clientFactory;
 	private readonly IDiscordOAuthClient _oauth;
 	private readonly Func<DiscordTokens, CancellationToken, Task> _persistTokens;
+	private readonly Func<IReadOnlyDictionary<string, string>, CancellationToken, Task>? _persistAvatars;
 	private readonly DiscordEventEmitter? _events;
 	private readonly Action<DiscordState, DiscordState>? _onStateChanged;
 	private readonly TimeSpan _reconnectDelay;
@@ -49,6 +51,7 @@ internal sealed class DiscordConnection : IDisposable
 	private DiscordTokens _tokens;
 	private IDiscordRpcClient? _client;
 	private DiscordState _state = DiscordState.Disconnected;
+	private ImmutableDictionary<string, string> _persistedAvatars = ImmutableDictionary<string, string>.Empty;
 	private string? _subscribedVoiceChannelId;
 	private IReadOnlyList<string> _grantedScopes = [];
 	private int _consecutiveFailures;
@@ -63,7 +66,10 @@ internal sealed class DiscordConnection : IDisposable
 		Func<DiscordTokens, CancellationToken, Task> persistTokens,
 		DiscordEventEmitter? events = null,
 		TimeSpan? reconnectDelay = null,
-		Action<DiscordState, DiscordState>? onStateChanged = null)
+		Action<DiscordState, DiscordState>? onStateChanged = null,
+		DiscordAvatarCache? avatarCache = null,
+		Func<IReadOnlyDictionary<string, string>, CancellationToken, Task>? persistAvatars = null,
+		IReadOnlyDictionary<string, string>? knownAvatars = null)
 	{
 		_clientFactory = clientFactory;
 		_oauth = oauth;
@@ -71,9 +77,17 @@ internal sealed class DiscordConnection : IDisposable
 		_clientSecret = clientSecret;
 		_tokens = tokens;
 		_persistTokens = persistTokens;
+		_persistAvatars = persistAvatars;
 		_events = events;
 		_reconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(10);
 		_onStateChanged = onStateChanged;
+		Avatars = avatarCache ?? new DiscordAvatarCache();
+
+		if (knownAvatars is { Count: > 0 })
+		{
+			_state = DiscordState.Disconnected with { KnownAvatars = knownAvatars.ToImmutableDictionary() };
+			_persistedAvatars = _state.KnownAvatars;
+		}
 	}
 
 	public DiscordState State
@@ -94,6 +108,8 @@ internal sealed class DiscordConnection : IDisposable
 	public DiscordIpcDenial? AccessDenial { get; private set; }
 
 	public bool HasIgnoredVoiceSettings => !_ignoredVoiceSettings.IsEmpty;
+
+	public DiscordAvatarCache Avatars { get; }
 
 	public IReadOnlyList<string> IgnoredVoiceSettings
 	{
@@ -171,6 +187,48 @@ internal sealed class DiscordConnection : IDisposable
 	private static string FormatRejection(DiscordRpcException ex)
 	{
 		return string.Create(CultureInfo.InvariantCulture, $"{ex.Message} (code {ex.Code})");
+	}
+
+	public async Task<DiscordUserVoiceSettingsResult> SetUserVoiceSettingsAsync(
+		DiscordUserVoiceSettingsPatch patch,
+		CancellationToken cancellationToken = default)
+	{
+		var client = _client;
+		if (client is null || !client.IsConnected)
+		{
+			_logger.Warning("Discord command {Command} ignored: not connected", DiscordRpcCommands.SetUserVoiceSettings);
+			return DiscordUserVoiceSettingsResult.NotConnected();
+		}
+
+		JsonElement response;
+		try
+		{
+			response = await client
+				.SendCommandAsync(DiscordRpcCommands.SetUserVoiceSettings, patch, cancellationToken: cancellationToken)
+				.ConfigureAwait(false);
+		}
+		catch (DiscordRpcException ex) when (ex.IsAuthProblem || ex.IsScopeProblem)
+		{
+			NeedsReauthorization = true;
+			_logger.Warning(ex, "Discord rejected the user voice settings command: authorization is no longer valid");
+			return DiscordUserVoiceSettingsResult.Rejected(FormatRejection(ex));
+		}
+		catch (DiscordRpcException ex)
+		{
+			_logger.Warning(ex, "Discord command {Command} failed", DiscordRpcCommands.SetUserVoiceSettings);
+
+			return ex.Code == 0
+				? DiscordUserVoiceSettingsResult.Failed(ex.Message)
+				: DiscordUserVoiceSettingsResult.Rejected(FormatRejection(ex));
+		}
+		catch (Exception ex) when (ex is TimeoutException or IOException)
+		{
+			_logger.Warning(ex, "Discord command {Command} failed", DiscordRpcCommands.SetUserVoiceSettings);
+			return DiscordUserVoiceSettingsResult.Failed(ex.Message);
+		}
+
+		UpdateState(state => DiscordStateMapper.ApplyUserVoiceSettings(state, response));
+		return DiscordUserVoiceSettingsResult.Applied();
 	}
 
 	private void RecordVoiceSettingsOutcome(
@@ -485,6 +543,7 @@ internal sealed class DiscordConnection : IDisposable
 			await ResubscribeVoiceChannelAsync(client, null, cancellationToken).ConfigureAwait(false);
 
 			UpdateState(state => state with { IsConnected = true });
+			MaybePersistAvatars();
 
 			_consecutiveFailures = 0;
 			RecordDenial(null);
@@ -706,6 +765,11 @@ internal sealed class DiscordConnection : IDisposable
 			case DiscordRpcEvents.VoiceStateCreate:
 			case DiscordRpcEvents.VoiceStateUpdate:
 				UpdateState(state => DiscordStateMapper.ApplyVoiceState(state, e.Data));
+				MaybePersistAvatars();
+				break;
+
+			case DiscordRpcEvents.VoiceStateDelete:
+				UpdateState(state => DiscordStateMapper.ApplyVoiceStateDelete(state, e.Data));
 				break;
 
 			case DiscordRpcEvents.VoiceConnectionStatus:
@@ -758,6 +822,7 @@ internal sealed class DiscordConnection : IDisposable
 		}
 
 		await ResubscribeVoiceChannelAsync(client, channelId, cancellationToken).ConfigureAwait(false);
+		MaybePersistAvatars();
 	}
 
 	private void HandleSpeaking(JsonElement data, bool speaking)
@@ -784,7 +849,7 @@ internal sealed class DiscordConnection : IDisposable
 			return;
 		}
 
-		UpdateState(_ => DiscordState.Disconnected);
+		UpdateState(previous => DiscordState.Disconnected with { KnownAvatars = previous.KnownAvatars });
 		_events?.Reset();
 		_subscribedVoiceChannelId = null;
 		_ignoredVoiceSettings.Clear();
@@ -851,6 +916,25 @@ internal sealed class DiscordConnection : IDisposable
 		}
 
 		_onStateChanged?.Invoke(previous, updated);
+	}
+
+	private void MaybePersistAvatars()
+	{
+		var persist = _persistAvatars;
+		if (persist is null)
+		{
+			return;
+		}
+
+		var current = State.KnownAvatars;
+		if (current.Count == _persistedAvatars.Count &&
+			current.All(entry => _persistedAvatars.TryGetValue(entry.Key, out var hash) && hash == entry.Value))
+		{
+			return;
+		}
+
+		_persistedAvatars = current;
+		Enqueue(ct => persist(current, ct));
 	}
 
 	private sealed record AuthenticateArgs

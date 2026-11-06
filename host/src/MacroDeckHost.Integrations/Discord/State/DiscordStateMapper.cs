@@ -32,21 +32,63 @@ internal static class DiscordStateMapper
 		}
 
 		var userId = ReadString(data, "user", "id");
-		if (!string.Equals(userId, state.UserId, StringComparison.Ordinal))
+		var updated = state;
+		if (string.Equals(userId, state.UserId, StringComparison.Ordinal))
+		{
+			if (!data.TryGetProperty("voice_state", out var voiceState) ||
+				voiceState.ValueKind != JsonValueKind.Object)
+			{
+				return UpsertVoiceUser(state, data);
+			}
+
+			updated = state with
+			{
+				ServerMuted = ReadBool(voiceState, "mute") ?? state.ServerMuted,
+				ServerDeafened = ReadBool(voiceState, "deaf") ?? state.ServerDeafened
+			};
+		}
+
+		return UpsertVoiceUser(updated, data);
+	}
+
+	public static DiscordState ApplyVoiceStateDelete(DiscordState state, JsonElement data)
+	{
+		if (data.ValueKind != JsonValueKind.Object)
 		{
 			return state;
 		}
 
-		if (!data.TryGetProperty("voice_state", out var voiceState) || voiceState.ValueKind != JsonValueKind.Object)
+		var userId = ReadString(data, "user", "id");
+		if (userId is null)
 		{
 			return state;
 		}
 
 		return state with
 		{
-			ServerMuted = ReadBool(voiceState, "mute") ?? state.ServerMuted,
-			ServerDeafened = ReadBool(voiceState, "deaf") ?? state.ServerDeafened
+			VoiceUsers = [.. state.VoiceUsers.Where(u => !string.Equals(u.UserId, userId, StringComparison.Ordinal))]
 		};
+	}
+
+	public static DiscordState ApplyUserVoiceSettings(DiscordState state, JsonElement data)
+	{
+		if (data.ValueKind != JsonValueKind.Object)
+		{
+			return state;
+		}
+
+		var userId = ReadString(data, "user_id");
+		if (userId is null)
+		{
+			return state;
+		}
+
+		return UpsertVoiceUser(state,
+			userId,
+			ReadDouble(data, "volume"),
+			ReadBool(data, "mute"),
+			avatarHash: null,
+			name: null);
 	}
 
 	public static DiscordState ApplySelectedVoiceChannel(DiscordState state, JsonElement data, string? guildName = null)
@@ -56,9 +98,11 @@ internal static class DiscordStateMapper
 			return state.WithoutVoiceChannel();
 		}
 
+		var channelId = ReadString(data, "id") ?? state.VoiceChannelId;
+
 		var updated = state with
 		{
-			VoiceChannelId = ReadString(data, "id") ?? state.VoiceChannelId,
+			VoiceChannelId = channelId,
 			VoiceChannelName = ReadString(data, "name") ?? state.VoiceChannelName,
 			VoiceGuildId = ReadString(data, "guild_id") ?? state.VoiceGuildId,
 			VoiceGuildName = guildName ?? state.VoiceGuildName,
@@ -68,9 +112,10 @@ internal static class DiscordStateMapper
 
 		if (!data.TryGetProperty("voice_states", out var voiceStates) || voiceStates.ValueKind != JsonValueKind.Array)
 		{
-			return updated;
+			return updated with { VoiceUsers = [] };
 		}
 
+		updated = updated with { VoiceUsers = [] };
 		foreach (var entry in voiceStates.EnumerateArray())
 		{
 			updated = ApplyVoiceState(updated, entry);
@@ -123,6 +168,69 @@ internal static class DiscordStateMapper
 		];
 	}
 
+	private static DiscordState UpsertVoiceUser(DiscordState state, JsonElement entry)
+	{
+		if (entry.ValueKind != JsonValueKind.Object)
+		{
+			return state;
+		}
+
+		var userId = ReadString(entry, "user", "id");
+		if (userId is null)
+		{
+			return state;
+		}
+
+		var nick = ReadString(entry, "nick");
+		var (_, displayName) = ReadUser(entry);
+
+		return UpsertVoiceUser(state,
+			userId,
+			ReadDouble(entry, "volume"),
+			ReadBool(entry, "mute"),
+			ReadString(entry, "user", "avatar"),
+			string.IsNullOrWhiteSpace(nick) ? displayName : nick.Trim());
+	}
+
+	private static DiscordState UpsertVoiceUser(
+		DiscordState state,
+		string userId,
+		double? volume,
+		bool? muted,
+		string? avatarHash,
+		string? name)
+	{
+		var users = state.VoiceUsers;
+		var index = -1;
+		for (var i = 0; i < users.Count; i++)
+		{
+			if (string.Equals(users[i].UserId, userId, StringComparison.Ordinal))
+			{
+				index = i;
+				break;
+			}
+		}
+
+		var existing = index >= 0 ? users[index] : null;
+		var merged = new DiscordVoiceUser
+		{
+			UserId = userId,
+			Name = name ?? existing?.Name,
+			AvatarHash = avatarHash ?? existing?.AvatarHash,
+			Volume = volume ?? existing?.Volume ?? 100,
+			Muted = muted ?? existing?.Muted ?? false
+		};
+
+		var updated = index >= 0
+			? state with { VoiceUsers = [.. users.Take(index), merged, .. users.Skip(index + 1)] }
+			: state with { VoiceUsers = [.. users, merged] };
+
+		// The avatar outlives the voice state: a member who leaves keeps their dimmed face.
+		return merged.AvatarHash is null
+			? updated
+			: updated with { KnownAvatars = updated.KnownAvatars.SetItem(userId, merged.AvatarHash) };
+	}
+
 	internal static bool? ReadBool(JsonElement element, string property)
 	{
 		return element.ValueKind == JsonValueKind.Object
@@ -159,6 +267,14 @@ internal static class DiscordStateMapper
 				? ReadString(nested, property)
 				: null;
 	}
+
+	internal static double? ReadDouble(JsonElement element, string property)
+		=> element.ValueKind == JsonValueKind.Object &&
+			element.TryGetProperty(property, out var value) &&
+			value.ValueKind == JsonValueKind.Number &&
+			value.TryGetDouble(out var parsed)
+				? parsed
+				: null;
 
 	internal static double? ReadNestedDouble(JsonElement element, string objectProperty, string property)
 	{

@@ -130,6 +130,63 @@ internal sealed class DiscordConnectionTests
 	}
 
 	[Test]
+	public async Task A_voice_state_update_tracks_a_member_outside_the_self_flags()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}""");
+
+		var member = connection.State.VoiceUsers.SingleOrDefault(u => u.UserId == "u2");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(member, Is.Not.Null);
+			Assert.That(member!.Name, Is.EqualTo("Friend"));
+			Assert.That(member.Volume, Is.EqualTo(80));
+			Assert.That(connection.State.ServerMuted, Is.False, "another member is not a server mute of ours");
+		});
+	}
+
+	[Test]
+	public async Task A_voice_state_delete_forgets_the_member()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend"},"nick":"Friend","volume":80,"mute":false}""");
+		Assert.That(connection.State.VoiceUsers.Any(u => u.UserId == "u2"), Is.True);
+
+		_client.RaiseEvent("VOICE_STATE_DELETE", """{"user":{"id":"u2","username":"friend"},"nick":"Friend"}""");
+
+		Assert.That(connection.State.VoiceUsers.Any(u => u.UserId == "u2"), Is.False);
+	}
+
+	[Test]
+	public async Task Setting_a_user_volume_updates_the_tracked_member()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RespondsWithEcho("SET_USER_VOICE_SETTINGS");
+		var result = await connection.SetUserVoiceSettingsAsync(
+			new DiscordUserVoiceSettingsPatch { UserId = "u2", Volume = 90 });
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Outcome, Is.EqualTo(DiscordUserVoiceSettingsOutcome.Applied));
+			Assert.That(_client.CallsTo("SET_USER_VOICE_SETTINGS").Single().ArgsJson,
+				Is.EqualTo("""{"user_id":"u2","volume":90}"""));
+			Assert.That(connection.State.VoiceUsers.Single(u => u.UserId == "u2").Volume, Is.EqualTo(90));
+		});
+	}
+
+	[Test]
 	public async Task Leaving_a_channel_unsubscribes_and_forgets_the_channel()
 	{
 		using var connection = Create();
@@ -430,6 +487,70 @@ internal sealed class DiscordConnectionTests
 			Assert.That(connection.State, Is.EqualTo(DiscordState.Disconnected));
 			Assert.That(connection.State.SelfMuted, Is.False);
 			Assert.That(connection.State.VoiceChannelName, Is.Null);
+		});
+	}
+
+	[Test]
+	public async Task Losing_the_connection_keeps_known_avatars()
+	{
+		using var connection = Create();
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"volume":80,"mute":false}""");
+
+		_client.RaiseDisconnected("closed");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(connection.State.IsConnected, Is.False);
+			Assert.That(connection.State.VoiceUsers, Is.Empty);
+			Assert.That(connection.State.KnownAvatars.GetValueOrDefault("u2"),
+				Is.EqualTo("a1b2c3"),
+				"assigned buttons keep their dimmed faces across a reconnect");
+		});
+	}
+
+	[Test]
+	public async Task A_new_avatar_is_persisted_once_for_the_next_startup()
+	{
+		var persisted = new List<IReadOnlyDictionary<string, string>>();
+		using var connection = Create(persistAvatars: (map, _) =>
+		{
+			persisted.Add(map);
+			return Task.CompletedTask;
+		});
+		connection.Start();
+		await WaitForAsync(() => connection.State.IsConnected);
+
+		_client.RaiseEvent("VOICE_STATE_UPDATE",
+			"""{"user":{"id":"u2","username":"friend","avatar":"a1b2c3"},"volume":80,"mute":false}""");
+
+		await WaitForAsync(() => persisted.Count > 0);
+
+		Assert.That(persisted[^1].GetValueOrDefault("u2"), Is.EqualTo("a1b2c3"));
+
+		_client.RaiseEvent("SPEAKING_START", """{"user_id":"u2"}""");
+		await Task.Delay(100);
+
+		Assert.That(persisted, Has.Count.EqualTo(1), "events without new avatars persist nothing");
+	}
+
+	[Test]
+	public void Stored_avatars_seed_the_state_before_the_first_join()
+	{
+		using var connection = new DiscordConnection(() => _client,
+			_oauth,
+			"123456",
+			"secret",
+			new DiscordTokens("stored-access", "stored-refresh", ExpiresAt: null, "rpc rpc.voice.read rpc.voice.write"),
+			(_, _) => Task.CompletedTask,
+			knownAvatars: new Dictionary<string, string>(StringComparer.Ordinal) { ["u9"] = "hash9" });
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(connection.State.IsConnected, Is.False);
+			Assert.That(connection.State.KnownAvatars.GetValueOrDefault("u9"), Is.EqualTo("hash9"));
 		});
 	}
 
@@ -792,7 +913,8 @@ internal sealed class DiscordConnectionTests
 		DateTimeOffset? expiresAt = null,
 		TimeSpan? reconnectDelay = null,
 		Action<DiscordState, DiscordState>? onStateChanged = null,
-		IDiscordOAuthClient? oauth = null)
+		IDiscordOAuthClient? oauth = null,
+		Func<IReadOnlyDictionary<string, string>, CancellationToken, Task>? persistAvatars = null)
 	{
 		return new DiscordConnection(() => _client,
 			oauth ?? _oauth,
@@ -806,7 +928,8 @@ internal sealed class DiscordConnectionTests
 			},
 			null,
 			reconnectDelay ?? TimeSpan.FromMinutes(5),
-			onStateChanged);
+			onStateChanged,
+			persistAvatars: persistAvatars);
 	}
 
 	private static async Task WaitForAsync(Func<bool> condition)
